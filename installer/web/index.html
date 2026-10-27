@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Установка Яндекс Станция + Mac | Qwen Assistant</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(22, 27, 34, 0.75);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --input-bg: rgba(13, 17, 23, 0.9);
+      --input-border: rgba(255, 255, 255, 0.15);
+      --primary: #58a6ff;
+      --primary-hover: #79c0ff;
+      --accent: #bc8cff;
+      --accent-gradient: linear-gradient(135deg, #a371f7 0%, #58a6ff 100%);
+      --success: #3fb950;
+      --warning: #d29922;
+      --danger: #f85149;
+      --text: #f0f6fc;
+      --text-muted: #8b949e;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, #0b0f19 50%, #07090e 100%);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      line-height: 1.5;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+
+    .badge-top {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(163, 113, 247, 0.15);
+      border: 1px solid rgba(163, 113, 247, 0.3);
+      border-radius: 999px;
+      font-size: 13px;
+      color: #d2a8ff;
+      margin-bottom: 16px;
+      font-weight: 500;
+    }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #ffffff 40%, #a5b4fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    p.subtitle {
+      color: var(--text-muted);
+      font-size: 16px;
+    }
+
+    .step-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      transition: border-color 0.2s ease;
+    }
+
+    .step-card:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      background: var(--accent-gradient);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .step-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px 14px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      border-radius: 8px;
+      color: #fff;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+
+    .btn-primary {
+      background: var(--accent-gradient);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(163, 113, 247, 0.3);
+    }
+
+    .btn-primary:hover {
+      filter: brightness(1.1);
+      box-shadow: 0 6px 20px rgba(163, 113, 247, 0.45);
+    }
+
+    .btn-cta {
+      width: 100%;
+      padding: 16px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      border-radius: 10px;
+    }
+
+    .candidates-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .chip {
+      background: rgba(56, 139, 253, 0.12);
+      border: 1px solid rgba(56, 139, 253, 0.25);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      color: #79c0ff;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: 0.2s ease;
+    }
+
+    .chip:hover {
+      background: rgba(56, 139, 253, 0.25);
+      border-color: #58a6ff;
+    }
+
+    .status-box {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      display: none;
+    }
+
+    .status-box.ok {
+      display: block;
+      background: rgba(63, 185, 80, 0.15);
+      border: 1px solid rgba(63, 185, 80, 0.35);
+      color: #56d364;
+    }
+
+    .status-box.error {
+      display: block;
+      background: rgba(248, 81, 73, 0.15);
+      border: 1px solid rgba(248, 81, 73, 0.35);
+      color: #ff7b72;
+    }
+
+    .status-box.loading {
+      display: block;
+      background: rgba(210, 153, 34, 0.15);
+      border: 1px solid rgba(210, 153, 34, 0.35);
+      color: #e3b341;
+    }
+
+    /* Terminal Console */
+    .terminal-card {
+      background: #06090e;
+      border: 1px solid #1e2430;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 16px;
+      display: none;
+    }
+
+    .terminal-header {
+      background: #111620;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid #1e2430;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #ff5f56; }
+    .dot-yellow { background: #ffbd2e; }
+    .dot-green { background: #27c93f; }
+
+    .terminal-title {
+      font-size: 12px;
+      color: #6e7681;
+      margin-left: 8px;
+      font-family: monospace;
+    }
+
+    .terminal-body {
+      font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      padding: 14px;
+      height: 240px;
+      overflow-y: auto;
+      color: #8b949e;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .terminal-body .term-line {
+      margin-bottom: 2px;
+    }
+
+    .terminal-body .cmd {
+      color: #79c0ff;
+      font-weight: 600;
+    }
+
+    .terminal-body .ok {
+      color: #7ee787;
+    }
+
+    .terminal-body .err {
+      color: #ff7b72;
+    }
+
+    /* Success Card */
+    .success-card {
+      background: linear-gradient(135deg, rgba(35, 134, 54, 0.25) 0%, rgba(13, 17, 23, 0.9) 100%);
+      border: 1px solid rgba(63, 185, 80, 0.4);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-top: 20px;
+      display: none;
+    }
+
+    .success-card h3 {
+      color: #56d364;
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .links-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .command-list {
+      margin-top: 12px;
+      padding-left: 20px;
+      color: #c9d1d9;
+      font-size: 14px;
+    }
+
+    .command-list li {
+      margin-bottom: 6px;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: #8b949e;
+      margin-top: 4px;
+    }
+
+    .hint a {
+      color: #58a6ff;
+      text-decoration: none;
+    }
+
+    .hint a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge-top">✨ Яндекс Станция Мини 2 + Mac</div>
+      <h1>Мастер быстрой установки</h1>
+      <p class="subtitle">Умный голосовой ассистент с Qwen 2.5 72B / Gemini, AirPlay музыкой и управлением Mac</p>
+    </header>
+
+    <!-- STEP 1: ПОДКЛЮЧЕНИЕ К СТАНЦИИ -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num">1</div>
+        <div class="step-title">Подключение к Яндекс Станции</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>IP-адрес Mac в домашней сети</label>
+          <input type="text" id="macIp" readonly>
+          <div class="hint">Определён автоматически для передачи звука на Mac</div>
+        </div>
+
+        <div class="form-group">
+          <label>Поиск колонки в сети</label>
+          <button class="btn btn-secondary" style="width: 100%;" onclick="scanNetwork()">
+            🔍 Найти Станцию автоматически
+          </button>
+          <div class="candidates-list" id="candidatesList"></div>
+        </div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>IP-адрес Станции</label>
+          <input type="text" id="stationIp" placeholder="192.168.2.83">
+        </div>
+
+        <div class="form-group">
+          <label>SSH-порт Станции</label>
+          <div class="input-row">
+            <input type="number" id="stationPort" value="2222" style="max-width: 110px;">
+            <button class="btn btn-secondary" style="flex: 1;" onclick="testStationConnection()">
+              ⚡️ Проверить связь
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="status-box" id="stationStatus"></div>
+    </div>
+
+    <!-- STEP 2: НЕЙРОСЕТЬ (LLM) -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num">2</div>
+        <div class="step-title">Нейросеть (LLM) и API-ключ</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Провайдер интеллекта</label>
+          <select id="llmProvider" onchange="onProviderChange()">
+            <option value="openrouter">OpenRouter (Рекомендуется — Qwen 2.5 72B / Gemini / Claude)</option>
+            <option value="groq">Groq Cloud (Быстрый Groq Whisper + Qwen)</option>
+            <option value="gemini">Google AI Studio (Gemini 2.0 Flash)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Модель для ответов</label>
+          <input type="text" id="llmModel" value="qwen/qwen-2.5-72b-instruct">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label id="apiKeyLabel">API Ключ OpenRouter</label>
+        <div class="input-row">
+          <input type="password" id="apiKey" placeholder="sk-or-v1-...">
+          <button class="btn btn-secondary" onclick="togglePassword()">👁</button>
+          <button class="btn btn-secondary" onclick="testApiKey()">Проверить ключ</button>
+        </div>
+        <div class="hint" id="apiKeyHint">
+          Получить ключ бесплатно: <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a> (поддерживает Qwen, DeepSeek, Gemma)
+        </div>
+      </div>
+
+      <div class="status-box" id="tokenStatus"></div>
+    </div>
+
+    <!-- STEP 3: ГОЛОС И СИНТЕЗ -->
+    <div class="step-card">
+      <div class="step-header">
+        <div class="step-num">3</div>
+        <div class="step-title">Голос, распознавание речи и часы</div>
+      </div>
+
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Голос ассистента (TTS)</label>
+          <select id="ttsVoice">
+            <option value="ru-RU-SvetlanaNeural">Светлана (Естественный женский, Edge Neural)</option>
+            <option value="ru-RU-DmitryNeural">Дмитрий (Естественный мужской, Edge Neural)</option>
+            <option value="irina">Ирина (Локальный Piper — работает оффлайн)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Распознавание речи (ASR)</label>
+          <select id="asrProvider">
+            <option value="groq">Groq Whisper (0 мс задержка, без нагрузки на Mac)</option>
+            <option value="mlx">Apple MLX Whisper (Локально на процессоре M1/M2/M3/M4)</option>
+          </select>
+        </div>
+      </div>
+      <div class="hint">LED дисплей на колонке будет показывать часы, температуру с градусов °, таймер и эквалайзер при музыке!</div>
+    </div>
+
+    <!-- STEP 4: РАЗВЁРТЫВАНИЕ -->
+    <div class="step-card" style="border-color: rgba(163, 113, 247, 0.4);">
+      <div class="step-header">
+        <div class="step-num">4</div>
+        <div class="step-title">Развёртывание и запуск</div>
+      </div>
+
+      <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 16px;">
+        Скрипт сохранит настройки, настроит окружение на Mac, загрузит демоны <code>touch-assistant</code> и <code>display-tool</code> на колонку, и создаст фоновый автозапуск в macOS.
+      </p>
+
+      <button class="btn btn-primary btn-cta" id="deployBtn" onclick="startDeployment()">
+        🚀 Развернуть и запустить всё в 1 клик
+      </button>
+
+      <div class="terminal-card" id="terminalBox">
+        <div class="terminal-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+          <div class="terminal-title">Лог установки ассистента</div>
+        </div>
+        <div class="terminal-body" id="termBody"></div>
+      </div>
+
+      <!-- УСПЕХ -->
+      <div class="success-card" id="successCard">
+        <h3>🎉 Установка успешно завершена!</h3>
+        <p>Голосовой ассистент запущен и готов к общению через Яндекс Станцию Мини 2 и Mac.</p>
+
+        <div style="margin-top: 14px;">
+          <strong>Попробуйте сказать в микрофон колонки:</strong>
+          <ul class="command-list">
+            <li>«Алиса, какая погода в Москве?» (покажет температуру на часах)</li>
+            <li>«Алиса, поставь музыку» (запустит трек и выведет эквалайзер)</li>
+            <li>«Алиса, открой документы» (найдёт и откроет папку на Mac)</li>
+            <li>«Алиса, что у меня на экране?» (сделает скриншот и проанализирует)</li>
+            <li>«Алиса, сделай громче на 20%» (плавная регулировка звука)</li>
+          </ul>
+        </div>
+
+        <div class="links-row">
+          <a class="btn btn-primary" href="http://localhost:8730" target="_blank">
+            📊 Открыть Панель управления (Dashboard)
+          </a>
+          <button class="btn btn-secondary" onclick="window.close()">Закрыть мастер</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let pollInterval = null;
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+        
+        document.getElementById('macIp').value = data.mac_ip || '127.0.0.1';
+        document.getElementById('stationIp').value = data.current_station_ip || '192.168.2.83';
+        document.getElementById('stationPort').value = data.current_station_port || '2222';
+        
+        if (data.openrouter_key) {
+          document.getElementById('apiKey').value = data.openrouter_key;
+        }
+
+        renderCandidates(data.station_candidates || []);
+      } catch (err) {
+        console.error('Ошибка загрузки статуса:', err);
+      }
+    }
+
+    function renderCandidates(candidates) {
+      const container = document.getElementById('candidatesList');
+      container.innerHTML = '';
+      if (!candidates || candidates.length === 0) {
+        container.innerHTML = '<span style="color:#8b949e; font-size:12px;">Колонки не найдены в кэше ARP</span>';
+        return;
+      }
+      candidates.forEach(c => {
+        const chip = document.createElement('div');
+        chip.className = 'chip';
+        chip.innerHTML = `📡 <b>${c.ip}:${c.port}</b> (${c.label})`;
+        chip.onclick = () => {
+          document.getElementById('stationIp').value = c.ip;
+          document.getElementById('stationPort').value = c.port;
+          testStationConnection();
+        };
+        container.appendChild(chip);
+      });
+    }
+
+    async function scanNetwork() {
+      const container = document.getElementById('candidatesList');
+      container.innerHTML = '<span style="color:#e3b341; font-size:12px;">⏳ Сканирование домашней сети...</span>';
+      await loadStatus();
+    }
+
+    async function testStationConnection() {
+      const ip = document.getElementById('stationIp').value.trim();
+      const port = parseInt(document.getElementById('stationPort').value) || 2222;
+      const status = document.getElementById('stationStatus');
+      
+      status.className = 'status-box loading';
+      status.innerHTML = `⏳ Проверяем SSH соединение с ${ip}:${port}...`;
+
+      try {
+        const res = await fetch('/api/test-station', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ip, port})
+        });
+        const data = await res.json();
+        if (data.ok) {
+          status.className = 'status-box ok';
+          status.innerHTML = `✅ <b>Успешно!</b> ${data.details}. Система: <code>${data.system || 'Linux ARM'}</code>`;
+        } else {
+          status.className = 'status-box error';
+          status.innerHTML = `❌ <b>Ошибка:</b> ${data.error || 'Нет ответа'}`;
+        }
+      } catch (err) {
+        status.className = 'status-box error';
+        status.innerHTML = `❌ Ошибка проверки: ${err.message}`;
+      }
+    }
+
+    function onProviderChange() {
+      const provider = document.getElementById('llmProvider').value;
+      const label = document.getElementById('apiKeyLabel');
+      const hint = document.getElementById('apiKeyHint');
+      const model = document.getElementById('llmModel');
+
+      if (provider === 'openrouter') {
+        label.innerText = 'API Ключ OpenRouter';
+        hint.innerHTML = 'Получить ключ: <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a> (универсальный доступ ко всем сетям)';
+        model.value = 'qwen/qwen-2.5-72b-instruct';
+      } else if (provider === 'gemini') {
+        label.innerText = 'Google AI Studio API Key';
+        hint.innerHTML = 'Бесплатный ключ: <a href="https://aistudio.google.com/app/apikey" target="_blank">aistudio.google.com</a>';
+        model.value = 'gemini-2.0-flash';
+      } else if (provider === 'groq') {
+        label.innerText = 'Groq Cloud API Key';
+        hint.innerHTML = 'Бесплатный ультрабыстрый ключ: <a href="https://console.groq.com/keys" target="_blank">console.groq.com/keys</a>';
+        model.value = 'qwen/qwen3.8-27b';
+      }
+    }
+
+    function togglePassword() {
+      const input = document.getElementById('apiKey');
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    async function testApiKey() {
+      const provider = document.getElementById('llmProvider').value;
+      const token = document.getElementById('apiKey').value.trim();
+      const status = document.getElementById('tokenStatus');
+
+      if (!token) {
+        status.className = 'status-box error';
+        status.innerHTML = '⚠️ Пожалуйста, вставьте API-ключ перед проверкой';
+        return;
+      }
+
+      status.className = 'status-box loading';
+      status.innerHTML = '⏳ Проверяем валидность токена на сервере...';
+
+      try {
+        const res = await fetch('/api/test-token', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({provider, token})
+        });
+        const data = await res.json();
+        if (data.ok) {
+          status.className = 'status-box ok';
+          status.innerHTML = `✅ <b>Токен активен!</b> ${data.provider}: ${data.info || 'Авторизация пройдена'}`;
+        } else {
+          status.className = 'status-box error';
+          status.innerHTML = `❌ <b>Ошибка ключа:</b> ${data.error}`;
+        }
+      } catch (err) {
+        status.className = 'status-box error';
+        status.innerHTML = `❌ Ошибка проверки: ${err.message}`;
+      }
+    }
+
+    async function startDeployment() {
+      const btn = document.getElementById('deployBtn');
+      const termBox = document.getElementById('terminalBox');
+      const termBody = document.getElementById('termBody');
+      const successCard = document.getElementById('successCard');
+
+      const payload = {
+        station_ip: document.getElementById('stationIp').value.trim(),
+        station_port: parseInt(document.getElementById('stationPort').value) || 2222,
+        mac_ip: document.getElementById('macIp').value.trim(),
+        llm_provider: document.getElementById('llmProvider').value,
+        llm_model: document.getElementById('llmModel').value.trim(),
+        tts_provider: document.getElementById('ttsVoice').value.includes('Neural') ? 'edge' : 'piper',
+        tts_voice: document.getElementById('ttsVoice').value,
+        asr_provider: document.getElementById('asrProvider').value,
+      };
+
+      const key = document.getElementById('apiKey').value.trim();
+      if (payload.llm_provider === 'openrouter') payload.openrouter_key = key;
+      if (payload.llm_provider === 'gemini') payload.gemini_key = key;
+      if (payload.llm_provider === 'groq') payload.groq_key = key;
+
+      btn.disabled = true;
+      btn.style.opacity = '0.6';
+      btn.innerHTML = '⏳ Выполняется развёртывание...';
+      termBox.style.display = 'block';
+      termBody.innerHTML = '<div class="term-line cmd">$ Инициализация мастера установки...</div>';
+
+      try {
+        const res = await fetch('/api/deploy', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          alert('Ошибка запуска: ' + (data.error || 'неизвестно'));
+          btn.disabled = false;
+          btn.style.opacity = '1';
+          btn.innerHTML = '🚀 Повторить развёртывание';
+          return;
+        }
+
+        // Запуск опроса логов
+        if (pollInterval) clearInterval(pollInterval);
+        pollInterval = setInterval(pollDeployStatus, 1000);
+      } catch (err) {
+        alert('Ошибка связи с сервером установки: ' + err.message);
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.innerHTML = '🚀 Повторить развёртывание';
+      }
+    }
+
+    async function pollDeployStatus() {
+      try {
+        const res = await fetch('/api/deploy/status');
+        const data = await res.json();
+        const termBody = document.getElementById('termBody');
+
+        if (data.logs && data.logs.length > 0) {
+          termBody.innerHTML = data.logs.map(line => {
+            if (line.includes('$ ')) return `<div class="term-line cmd">${escapeHtml(line)}</div>`;
+            if (line.includes('=== ')) return `<div class="term-line ok" style="font-weight:bold;">${escapeHtml(line)}</div>`;
+            if (line.includes('ОШИБКА') || line.includes('Error')) return `<div class="term-line err">${escapeHtml(line)}</div>`;
+            return `<div class="term-line">${escapeHtml(line)}</div>`;
+          }).join('');
+          termBody.scrollTop = termBody.scrollHeight;
+        }
+
+        if (!data.running) {
+          clearInterval(pollInterval);
+          const btn = document.getElementById('deployBtn');
+          btn.disabled = false;
+          btn.style.opacity = '1';
+
+          if (data.success) {
+            btn.innerHTML = '✅ Развёртывание завершено!';
+            btn.className = 'btn btn-cta';
+            btn.style.background = '#238636';
+            document.getElementById('successCard').style.display = 'block';
+            document.getElementById('successCard').scrollIntoView({ behavior: 'smooth' });
+          } else {
+            btn.innerHTML = '❌ Ошибка при установке';
+            btn.style.background = '#da3633';
+            alert('Во время установки возникла ошибка: ' + data.error);
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка опроса логов:', err);
+      }
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // Инициализация при открытии страницы
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStatus();
+    });
+  </script>
+</body>
+</html>

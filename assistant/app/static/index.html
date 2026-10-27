@@ -1,0 +1,2002 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Station Control — Панель управления Яндекс Станцией Мини 2</title>
+  <style>
+    :root {
+      --bg-canvas: #0d0f13;
+      --bg-surface: #14171e;
+      --bg-elevated: #1b1f28;
+      --bg-interactive: #232834;
+      --bg-interactive-hover: #2c3240;
+
+      --text-primary: #f1f4f9;
+      --text-secondary: #a6b0c3;
+      --text-muted: #8490a7;
+
+      --border-subtle: rgba(230, 236, 248, 0.08);
+      --border-strong: rgba(230, 236, 248, 0.15);
+
+      --accent-primary: #b83214;
+      --accent-primary-hover: #9e290f;
+      --accent-primary-soft: rgba(255, 90, 54, 0.14);
+
+      --accent-telemetry: #38bdf8;
+      --accent-telemetry-soft: rgba(56, 189, 248, 0.13);
+
+      --status-online: #22c55e;
+      --status-online-soft: rgba(34, 197, 94, 0.14);
+      --status-warn: #f59e0b;
+      --status-warn-soft: rgba(245, 158, 11, 0.14);
+      --status-danger: #ef4444;
+      --status-danger-soft: rgba(239, 68, 68, 0.16);
+
+      --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+      --font-mono: "SF Mono", "JetBrains Mono", ui-monospace, Menlo, monospace;
+
+      --shadow-panel: 0 6px 20px rgba(0, 0, 0, 0.36);
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    ::selection {
+      background: rgba(255, 90, 54, 0.28);
+      color: var(--text-primary);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-canvas);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--bg-interactive);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--bg-interactive-hover);
+    }
+
+    body {
+      font-family: var(--font-sans);
+      font-size: 0.875rem;
+      line-height: 1.5;
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      caret-color: var(--accent-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--accent-telemetry);
+      outline-offset: 2px;
+    }
+
+    .tabular {
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Верхняя полоса телеметрии */
+    .topbar {
+      height: 58px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 0 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 40;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+    }
+
+    .brand-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--status-online);
+      flex-shrink: 0;
+    }
+    .brand-dot.offline {
+      background: var(--status-danger);
+    }
+
+    .telemetry-strip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .pill strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .pill.online {
+      background: var(--status-online-soft);
+      color: #86efac;
+      border-color: rgba(34, 197, 94, 0.25);
+    }
+
+    .pill.warn {
+      background: var(--status-warn-soft);
+      color: #fcd34d;
+      border-color: rgba(245, 158, 11, 0.25);
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Основная сетка приложения */
+    .app-shell {
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      flex: 1;
+      min-height: calc(100vh - 58px);
+    }
+
+    /* Боковая навигация */
+    .sidebar {
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border-subtle);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .nav-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      list-style: none;
+    }
+
+    .nav-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: left;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+
+    .nav-btn:hover {
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+    }
+
+    .nav-btn.active {
+      background: var(--bg-interactive);
+      color: var(--text-primary);
+      border-color: var(--border-strong);
+    }
+
+    .nav-btn svg {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+      color: var(--text-secondary);
+    }
+
+    .nav-btn.active svg {
+      color: var(--accent-primary);
+    }
+
+    .nav-badge {
+      margin-left: auto;
+      padding: 1px 7px;
+      border-radius: 10px;
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sidebar-footer {
+      padding: 12px;
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .sidebar-footer-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Рабочая область */
+    .workspace {
+      padding: 20px 24px;
+      overflow-y: auto;
+      max-width: 1600px;
+      width: 100%;
+    }
+
+    .tab-pane {
+      display: none;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .tab-pane.active {
+      display: flex;
+    }
+
+    /* Кнопки и контролы */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 7px 13px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-strong);
+      background: var(--bg-interactive);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 150ms ease, border-color 150ms ease, transform 100ms ease;
+      white-space: nowrap;
+    }
+
+    .btn:hover:not(:disabled) {
+      background: var(--bg-interactive-hover);
+    }
+
+    .btn:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+
+    .btn-primary {
+      background: var(--accent-primary);
+      border-color: var(--accent-primary);
+      color: #ffffff;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background: var(--accent-primary-hover);
+      border-color: var(--accent-primary-hover);
+    }
+
+    .btn-danger {
+      background: var(--status-danger-soft);
+      border-color: rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+    }
+
+    .btn-danger:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.26);
+    }
+
+    .btn-sm {
+      padding: 5px 10px;
+      font-size: 0.75rem;
+    }
+
+    /* Inputs */
+    .input,
+    .select,
+    .textarea {
+      width: 100%;
+      background: var(--bg-canvas);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.875rem;
+      padding: 8px 12px;
+      transition: border-color 150ms ease;
+    }
+
+    .input::placeholder,
+    .textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    .input:focus,
+    .select:focus,
+    .textarea:focus {
+      border-color: var(--accent-telemetry);
+      outline: none;
+    }
+
+    .textarea {
+      resize: vertical;
+      min-height: 84px;
+      line-height: 1.5;
+    }
+
+    /* Панели (без вложенных карточек) */
+    .panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-panel);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .panel-title {
+      font-size: 1.0625rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h1.panel-title {
+      font-size: 1.375rem;
+      letter-spacing: -0.015em;
+    }
+
+    .panel-body {
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Сетка вкладки 1: Пульт и Нейросеть */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .right-column {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Быстрые чипы команд */
+    .quick-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 5px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      font-family: inherit;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: background-color 150ms ease, color 150ms ease;
+    }
+
+    .chip:hover {
+      background: var(--bg-interactive);
+      color: var(--text-primary);
+    }
+
+    /* Лента чата */
+    .chat-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-height: 440px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .chat-item {
+      padding: 12px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chat-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .route-tag {
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: var(--accent-telemetry-soft);
+      color: #7dd3fc;
+      font-weight: 500;
+      font-size: 0.75rem;
+    }
+
+    .chat-q {
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+    }
+
+    .chat-a {
+      color: var(--text-primary);
+      font-size: 0.9375rem;
+      line-height: 1.45;
+      max-width: 72ch;
+    }
+
+    .chat-controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .checkbox-label input {
+      accent-color: var(--accent-primary);
+      width: 15px;
+      height: 15px;
+    }
+
+    /* Музыкальный плеер */
+    .now-playing-box {
+      padding: 14px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .track-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .track-title {
+      font-weight: 600;
+      font-size: 0.9375rem;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .track-artist {
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    .player-buttons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    /* Ползунки громкости */
+    .slider-row {
+      display: grid;
+      grid-template-columns: 130px 1fr 48px;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.8125rem;
+      color: var(--text-secondary);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent-primary);
+      cursor: pointer;
+    }
+
+    /* Таблица журнала вызовов */
+    .table-wrap {
+      width: 100%;
+      overflow-x: auto;
+    }
+
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.8125rem;
+    }
+
+    table.data-table th {
+      padding: 10px 14px;
+      color: var(--text-secondary);
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-strong);
+      background: var(--bg-elevated);
+      white-space: nowrap;
+    }
+
+    table.data-table td {
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      vertical-align: top;
+      color: var(--text-primary);
+    }
+
+    table.data-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .source-badge {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    .source-voice {
+      background: var(--accent-primary-soft);
+      color: #ff8b70;
+    }
+    .source-web {
+      background: var(--accent-telemetry-soft);
+      color: #7dd3fc;
+    }
+    .source-say {
+      background: var(--status-online-soft);
+      color: #86efac;
+    }
+    .source-system {
+      background: var(--status-warn-soft);
+      color: #fcd34d;
+    }
+
+    /* Списки задач и файлов */
+    .clean-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      divide-y: 1px solid var(--border-subtle);
+    }
+
+    .clean-list li {
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 0.875rem;
+    }
+
+    .clean-list li:last-child {
+      border-bottom: none;
+    }
+
+    /* Лог-терминал */
+    .log-terminal {
+      background: #090b0e;
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      line-height: 1.55;
+      color: #d1d9e6;
+      height: 520px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .log-line-warn {
+      color: #fcd34d;
+    }
+    .log-line-err {
+      color: #fca5a5;
+    }
+    .log-line-info {
+      color: #93c5fd;
+    }
+
+    .two-col-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .metrics-strip {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 12px;
+      padding: 14px 18px;
+      background: var(--bg-elevated);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+
+    .metric-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    .metric-val {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Уведомление-тост */
+    .toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      color: var(--text-primary);
+      box-shadow: var(--shadow-panel);
+      font-size: 0.8125rem;
+      z-index: 100;
+      opacity: 0;
+      transform: translateY(8px);
+      pointer-events: none;
+      transition: opacity 180ms ease, transform 180ms ease;
+    }
+
+    .toast.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .empty-hint {
+      padding: 24px 16px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8125rem;
+    }
+
+    @media (max-width: 1080px) {
+      .overview-grid,
+      .two-col-grid {
+        grid-template-columns: 1fr;
+      }
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+      .sidebar {
+        border-right: none;
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .nav-list {
+        flex-direction: row;
+        flex-wrap: wrap;
+      }
+      .nav-btn {
+        width: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Верхняя панель телеметрии -->
+  <header class="topbar">
+    <div class="brand">
+      <span id="stationDot" class="brand-dot" title="Статус оркестратора"></span>
+      <span>Яндекс Станция Мини 2: Центр управления</span>
+    </div>
+
+    <div class="telemetry-strip">
+      <div class="pill online" id="pillStation">
+        <span>Станция:</span>
+        <strong id="topStationHost" class="tabular">192.168.2.83</strong>
+      </div>
+      <div class="pill">
+        <span>ASR:</span>
+        <strong id="topAsr">groq</strong>
+      </div>
+      <div class="pill">
+        <span>LLM:</span>
+        <strong id="topLlm">chain</strong>
+      </div>
+      <div class="pill">
+        <span>Голос:</span>
+        <strong id="topTts">Светлана (Edge)</strong>
+      </div>
+      <div class="pill">
+        <span>Вызовов:</span>
+        <strong id="topCalls" class="tabular">0</strong>
+      </div>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn btn-sm" onclick="triggerFindIphone()" title="Подать сигнал на iPhone через Локатор">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="2" width="12" height="20" rx="2" />
+          <line x1="12" y1="18" x2="12.01" y2="18" />
+        </svg>
+        <span>Где мой iPhone</span>
+      </button>
+      <button class="btn btn-sm btn-danger" onclick="emergencyStop()" title="Немедленно остановить речь, музыку и таймеры">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <rect x="6" y="6" width="12" height="12" rx="1" />
+        </svg>
+        <span>Стоп звук</span>
+      </button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <!-- Боковая навигация -->
+    <aside class="sidebar">
+      <ul class="nav-list" role="tablist">
+        <li>
+          <button class="nav-btn active" onclick="switchTab('overview', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+            <span>Пульт и Нейросеть</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" onclick="switchTab('journal', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 8v4l3 3" />
+              <circle cx="12" cy="12" r="9" />
+            </svg>
+            <span>Журнал вызовов</span>
+            <span id="navCallsBadge" class="nav-badge">0</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" onclick="switchTab('tts', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+              <line x1="12" y1="19" x2="12" y2="22" />
+            </svg>
+            <span>Студия речи и Голос</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" onclick="switchTab('productivity', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="9 11 12 14 22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+            <span>Задачи, Заметки и Git</span>
+          </button>
+        </li>
+        <li>
+          <button class="nav-btn" onclick="switchTab('logs', this)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+            <span>Системные логи и SSH</span>
+          </button>
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-row">
+          <span>SSH Станции:</span>
+          <strong id="sideSshStatus" class="tabular">проверка...</strong>
+        </div>
+        <div class="sidebar-footer-row">
+          <span>Пинг колонки:</span>
+          <strong id="sidePing" class="tabular">н/д</strong>
+        </div>
+        <div class="sidebar-footer-row">
+          <span>Память станции:</span>
+          <strong id="sideMem" class="tabular">н/д</strong>
+        </div>
+        <div class="sidebar-footer-row">
+          <span>Средний ответ:</span>
+          <strong id="sideAvgLatency" class="tabular">0.00 с</strong>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Главная рабочая область -->
+    <main class="workspace">
+      <!-- ВКЛАДКА 1: ПУЛЬТ И НЕЙРОСЕТЬ -->
+      <section id="tab-overview" class="tab-pane active">
+        <div class="overview-grid">
+          <!-- Левая колонка: Диалог с нейросетью и выполнение команд -->
+          <div class="panel">
+            <div class="panel-header">
+              <h1 class="panel-title">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+                <span>Командная консоль и диалог с ИИ</span>
+              </h1>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-sm" onclick="resetContext()" title="Очистить контекст диалога LLM">Сбросить контекст</button>
+              </div>
+            </div>
+
+            <div class="panel-body">
+              <div class="quick-chips">
+                <button class="chip" onclick="sendQuickCommand('Что изменилось в коде?')">Что изменилось в коде?</button>
+                <button class="chip" onclick="sendQuickCommand('Какие напоминания на сегодня?')">Напоминания на сегодня</button>
+                <button class="chip" onclick="sendQuickCommand('Что в списке покупок?')">Список покупок</button>
+                <button class="chip" onclick="sendQuickCommand('Какая сейчас погода?')">Погода сейчас</button>
+                <button class="chip" onclick="sendQuickCommand('Что сейчас играет?')">Что сейчас играет?</button>
+                <button class="chip" onclick="sendQuickCommand('Поставь лоуфай для работы')">Лоуфай для работы</button>
+                <button class="chip" onclick="sendQuickCommand('Где мой айфон?')">Где мой iPhone?</button>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <textarea
+                  id="chatInput"
+                  class="textarea"
+                  placeholder="Введите вопрос нейросети или голосовую команду (например: «Напомни завтра в 10 утра позвонить врачу», «Поставь рок», «Что изменилось в коде?»)..."
+                  onkeydown="if(event.key==='Enter' && !event.shiftKey){event.preventDefault(); sendChat();}"
+                ></textarea>
+
+                <div class="chat-controls-row">
+                  <div class="checkbox-group">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="chkSpeakStation" />
+                      <span>Озвучить на Яндекс Станции</span>
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="chkPlayBrowser" checked />
+                      <span>Озвучить в браузере</span>
+                    </label>
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="chkDetailedMode" onchange="toggleDetailedMode(this.checked)" />
+                      <span>Умный (подробный) режим</span>
+                    </label>
+                  </div>
+
+                  <button id="btnSendChat" class="btn btn-primary" onclick="sendChat()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <line x1="22" y1="2" x2="11" y2="13" />
+                      <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                    <span>Отправить запрос</span>
+                  </button>
+                </div>
+              </div>
+
+              <audio id="browserAudioPlayer" controls style="width: 100%; height: 36px; display: none;"></audio>
+
+              <div id="chatFeed" class="chat-feed">
+                <div class="empty-hint">Отправьте команду выше или скажите «Алиса...» в микрофон колонки: все ответы появятся здесь в реальном времени.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Правая колонка: Музыка, Станция, Таймеры -->
+          <div class="right-column">
+            <!-- Управление Apple Music & AirPlay -->
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" />
+                    <circle cx="18" cy="16" r="3" />
+                  </svg>
+                  <span>Apple Music и AirPlay на Станцию</span>
+                </h2>
+                <span id="musicStateBadge" class="pill">Ожидание</span>
+              </div>
+
+              <div class="panel-body">
+                <div class="now-playing-box">
+                  <div class="track-meta">
+                    <div id="nowPlayingTrack" class="track-title">Ничего не воспроизводится</div>
+                    <div id="nowPlayingArtist" class="track-artist">Выберите станцию или плейлист ниже</div>
+                  </div>
+                  <div style="display: flex; gap: 6px;">
+                    <button class="btn btn-sm" onclick="musicAction('favorite')" title="Добавить текущий трек в любимые">В любимые</button>
+                    <button class="btn btn-sm" onclick="musicAction('dislike')" title="Дизлайк и пропуск">Дизлайк</button>
+                  </div>
+                </div>
+
+                <div class="player-buttons">
+                  <button class="btn btn-sm" onclick="musicAction('prev')" title="Предыдущий трек">Пред.</button>
+                  <button class="btn btn-sm" onclick="musicAction('rewind', '', 20)" title="Назад на 20 секунд">-20 с</button>
+                  <button class="btn btn-sm btn-primary" onclick="musicAction('resume')">Играть</button>
+                  <button class="btn btn-sm" onclick="musicAction('pause')">Пауза</button>
+                  <button class="btn btn-sm" onclick="musicAction('forward', '', 20)" title="Вперёд на 20 секунд">+20 с</button>
+                  <button class="btn btn-sm" onclick="musicAction('next')" title="Следующий трек">След.</button>
+                </div>
+
+                <div class="quick-chips">
+                  <button class="chip" onclick="musicAction('play', '')">Моя волна</button>
+                  <button class="chip" onclick="musicAction('play', 'станцию открытий')">Станция открытий</button>
+                  <button class="chip" onclick="musicAction('play', 'рок')">Рок-радио</button>
+                  <button class="chip" onclick="musicAction('play', 'лоуфай')">Лоуфай для работы</button>
+                  <button class="chip" onclick="musicAction('play', 'джаз')">Джаз</button>
+                  <button class="chip" onclick="musicAction('play', 'любимые')">Любимые треки</button>
+                  <button class="chip" onclick="musicAction('play', 'киберпанк')">Cyberpunk</button>
+                  <button class="chip" onclick="musicAction('play', 'хотлайн')">Hotline Miami</button>
+                </div>
+
+                <div class="slider-row">
+                  <span>Громкость AirPlay</span>
+                  <input type="range" min="1" max="10" value="6" oninput="document.getElementById('airplayVolVal').textContent = (this.value*10)+'%'" onchange="stationAction('airplay_volume', Number(this.value))" />
+                  <span id="airplayVolVal" class="tabular">60%</span>
+                </div>
+
+                <div class="slider-row">
+                  <span>Громкость Mac</span>
+                  <input type="range" min="0" max="100" value="50" oninput="document.getElementById('macVolVal').textContent = this.value+'%'" onchange="stationAction('mac_volume', Number(this.value))" />
+                  <span id="macVolVal" class="tabular">50%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Таймеры и быстрые аппаратные действия -->
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <circle cx="12" cy="13" r="8" />
+                    <path d="M12 9v4l2 2" />
+                    <path d="M5 3 2 6" />
+                    <path d="m22 6-3-3" />
+                  </svg>
+                  <span>Таймеры на экране Станции</span>
+                </h2>
+                <button class="btn btn-sm btn-danger" onclick="cancelAllTimers()">Сбросить все</button>
+              </div>
+
+              <div class="panel-body">
+                <div class="quick-chips">
+                  <button class="chip" onclick="quickTimer(60, '1 минута')">+ 1 мин</button>
+                  <button class="chip" onclick="quickTimer(180, '3 минуты')">+ 3 мин</button>
+                  <button class="chip" onclick="quickTimer(300, '5 минут')">+ 5 мин</button>
+                  <button class="chip" onclick="quickTimer(600, '10 минут')">+ 10 мин</button>
+                  <button class="chip" onclick="quickTimer(900, '15 минут')">+ 15 мин</button>
+                  <button class="chip" onclick="quickTimer(1800, '30 минут')">+ 30 мин</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 110px auto; gap: 8px;">
+                  <input id="customTimerLabel" class="input" placeholder="Название (напр. Выключить духовку)" />
+                  <input id="customTimerMin" type="number" min="1" max="720" value="10" class="input tabular" placeholder="Мин" />
+                  <button class="btn btn-primary" onclick="createCustomTimer()">Запустить</button>
+                </div>
+
+                <ul id="activeTimersList" class="clean-list">
+                  <li class="empty-hint">Нет активных таймеров или будильников.</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Управление LED-дисплеем колонки -->
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                    <line x1="6" y1="12" x2="6" y2="12" stroke-linecap="round" stroke-width="2" />
+                    <line x1="10" y1="12" x2="10" y2="12" stroke-linecap="round" stroke-width="2" />
+                    <line x1="14" y1="12" x2="14" y2="12" stroke-linecap="round" stroke-width="2" />
+                    <line x1="18" y1="12" x2="18" y2="12" stroke-linecap="round" stroke-width="2" />
+                  </svg>
+                  <span>LED-дисплей Яндекс Станции</span>
+                </h2>
+                <div style="display: flex; gap: 6px;">
+                  <button class="btn btn-sm" onclick="displayAction('clock')">Часы</button>
+                  <button class="btn btn-sm btn-danger" onclick="displayAction('clear')">Погасить</button>
+                </div>
+              </div>
+
+              <div class="panel-body">
+                <!-- Бегущая строка / текст -->
+                <div style="display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-bottom: 12px;">
+                  <input id="displayTextVal" class="input" placeholder="Текст для бегущей строки (русский/латиница)" />
+                  <button class="btn btn-primary" onclick="displayAction('scroll', document.getElementById('displayTextVal').value)">Бегущая строка</button>
+                  <button class="btn" onclick="displayAction('show', document.getElementById('displayTextVal').value)">Статично</button>
+                </div>
+
+                <!-- Эмоции и рожицы -->
+                <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500;">Эмоции и анимации:</div>
+                <div class="quick-chips" style="margin-bottom: 14px;">
+                  <button class="chip" onclick="displayAction('face', 'happy')">^  ^ Радость</button>
+                  <button class="chip" onclick="displayAction('face', 'sleep')">-  - Сон</button>
+                  <button class="chip" onclick="displayAction('face', 'cool')">O  O Удивление</button>
+                  <button class="chip" onclick="displayAction('face', 'wink')">^  - Подмигивание</button>
+                  <button class="chip" onclick="displayAction('face', 'love')">&lt; 3 Любовь</button>
+                  <button class="chip" onclick="displayAction('face', 'talk')">^ oo ^ Говорящий</button>
+                  <button class="chip" onclick="displayAction('face', 'dizzy')">*  * Спиннер</button>
+                  <button class="chip" onclick="displayAction('eq', 15)">~ ~ Эквалайзер</button>
+                </div>
+
+                <!-- Температура и яркость -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Вывести температуру (°):</div>
+                    <div style="display: flex; gap: 6px;">
+                      <input id="displayTempVal" type="number" value="21" class="input tabular" style="width: 80px;" />
+                      <button class="btn" onclick="displayAction('temp', document.getElementById('displayTempVal').value)">Показать °C</button>
+                    </div>
+                  </div>
+                  <div>
+                    <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Яркость сегментов:</div>
+                    <div class="slider-row" style="margin: 0; padding: 0;">
+                      <input type="range" min="1" max="255" value="25" oninput="document.getElementById('dispBrightVal').textContent = this.value" onchange="displayAction('brightness', Number(this.value))" />
+                      <span id="dispBrightVal" class="tabular" style="min-width: 32px;">25</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ВКЛАДКА 2: ЖУРНАЛ ВЫЗОВОВ -->
+      <section id="tab-journal" class="tab-pane">
+        <div class="panel">
+          <div class="panel-header">
+            <h1 class="panel-title">Журнал голосовых вызовов и обращений к нейросети</h1>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select id="journalSourceFilter" class="select" style="width: 185px;" onchange="loadJournal()">
+                <option value="">Все источники</option>
+                <option value="voice">Голос со станции</option>
+                <option value="web">Веб-панель</option>
+                <option value="say">Озвучка TTS</option>
+              </select>
+              <input id="journalSearchInput" class="input" style="width: 240px;" placeholder="Поиск по фразе или модулю..." oninput="loadJournal()" />
+              <button class="btn btn-sm" onclick="loadJournal()">Обновить</button>
+              <button class="btn btn-sm btn-danger" onclick="clearJournal()">Очистить журнал</button>
+            </div>
+          </div>
+
+          <div class="metrics-strip">
+            <div class="metric-cell">
+              <span class="metric-label">Всего вызовов</span>
+              <span id="statTotalCalls" class="metric-val">0</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Голосом со станции</span>
+              <span id="statVoiceCalls" class="metric-val">0</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Из веб-панели</span>
+              <span id="statWebCalls" class="metric-val">0</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Прямых озвучек TTS</span>
+              <span id="statSayCalls" class="metric-val">0</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Среднее время цикла</span>
+              <span id="statAvgSec" class="metric-val">0.00 с</span>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Время</th>
+                  <th>Источник</th>
+                  <th>Модуль</th>
+                  <th>Запрос / Транскрипция</th>
+                  <th>Ответ ассистента</th>
+                  <th class="tabular">Тайминги (ASR / LLM / TTS)</th>
+                  <th>Действия</th>
+                </tr>
+              </thead>
+              <tbody id="journalTableBody">
+                <tr>
+                  <td colspan="7" class="empty-hint">Загрузка журнала вызовов...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ВКЛАДКА 3: СТУДИЯ РЕЧИ И ГОЛОС -->
+      <section id="tab-tts" class="tab-pane">
+        <div class="two-col-grid">
+          <!-- Диктор: Прямая озвучка текста на колонку -->
+          <div class="panel">
+            <div class="panel-header">
+              <h1 class="panel-title">Диктор: прямая озвучка текста на Яндекс Станции</h1>
+            </div>
+            <div class="panel-body">
+              <textarea
+                id="ttsStudioText"
+                class="textarea"
+                style="min-height: 120px;"
+                placeholder="Введите любой текст, который колонка должна произнести вслух..."
+              >Привет! Я говорю нейросетевым голосом Светлана. Все системы работают отлично.</textarea>
+
+              <div style="display: grid; grid-template-columns: 1fr 140px; gap: 10px;">
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Голос для синтеза</label>
+                  <select id="ttsStudioVoice" class="select">
+                    <option value="ru-RU-SvetlanaNeural">Светлана: Microsoft Neural (Женский, живой)</option>
+                    <option value="ru-RU-DmitryNeural">Дмитрий: Microsoft Neural (Мужской, глубокий)</option>
+                    <option value="ru-RU-DariyaNeural">Дария: Microsoft Neural (Женский, мягкий)</option>
+                    <option value="piper">Ирина: локальный Piper ONNX (Оффлайн)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size: 0.75rem; color: var(--text-secondary); display: block; margin-bottom: 4px;">Темп речи</label>
+                  <select id="ttsStudioRate" class="select">
+                    <option value="-15%">Медленнее (-15%)</option>
+                    <option value="-5%">Чуть спокойнее (-5%)</option>
+                    <option value="+0%" selected>Обычный (+0%)</option>
+                    <option value="+10%">Бодрый (+10%)</option>
+                    <option value="+20%">Быстрый (+20%)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="chat-controls-row">
+                <div class="checkbox-group">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="ttsPlayStation" checked />
+                    <span>Произнести на Яндекс Станции</span>
+                  </label>
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="ttsWithChime" checked />
+                    <span>Сигнал уведомления перед речью</span>
+                  </label>
+                </div>
+
+                <button id="btnRunTts" class="btn btn-primary" onclick="runTtsStudio()">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+                    <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                  </svg>
+                  <span>Озвучить текст</span>
+                </button>
+              </div>
+
+              <audio id="ttsStudioAudio" controls style="width: 100%; height: 38px; display: none;"></audio>
+            </div>
+          </div>
+
+          <!-- Настройка основного голоса ассистента -->
+          <div class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">Настройка голоса ассистента по умолчанию</h2>
+            </div>
+            <div class="panel-body">
+              <p style="color: var(--text-secondary); font-size: 0.8125rem; max-width: 68ch;">
+                Выберите основной голос, которым колонка отвечает на голосовые вопросы. Изменение применяется мгновенно и сохраняется в конфигурацию <code>.env</code>. При отсутствии интернета автоматически срабатывает резервный локальный голос Piper.
+              </p>
+
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button class="btn" style="justify-content: space-between; padding: 12px 14px;" onclick="saveDefaultVoice('edge', 'ru-RU-SvetlanaNeural')">
+                  <span><strong>Светлана</strong> (ru-RU-SvetlanaNeural, рекомендуемый)</span>
+                  <span class="pill online">Edge Neural</span>
+                </button>
+
+                <button class="btn" style="justify-content: space-between; padding: 12px 14px;" onclick="saveDefaultVoice('edge', 'ru-RU-DmitryNeural')">
+                  <span><strong>Дмитрий</strong> (ru-RU-DmitryNeural, мужской голос)</span>
+                  <span class="pill">Edge Neural</span>
+                </button>
+
+                <button class="btn" style="justify-content: space-between; padding: 12px 14px;" onclick="saveDefaultVoice('edge', 'ru-RU-DariyaNeural')">
+                  <span><strong>Дария</strong> (ru-RU-DariyaNeural, спокойный тембр)</span>
+                  <span class="pill">Edge Neural</span>
+                </button>
+
+                <button class="btn" style="justify-content: space-between; padding: 12px 14px;" onclick="saveDefaultVoice('piper', 'piper')">
+                  <span><strong>Ирина</strong> (полностью автономный локальный голос ONNX)</span>
+                  <span class="pill warn">Offline Piper</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ВКЛАДКА 4: ЗАДАЧИ, ЗАМЕТКИ И GIT -->
+      <section id="tab-productivity" class="tab-pane">
+        <div class="two-col-grid">
+          <!-- Напоминания и Список покупок -->
+          <div class="panel">
+            <div class="panel-header">
+              <h1 class="panel-title">Apple Напоминания и Список покупок</h1>
+              <button class="btn btn-sm" onclick="loadProductivity()">Обновить</button>
+            </div>
+            <div class="panel-body">
+              <div style="display: grid; grid-template-columns: 1fr 140px auto; gap: 8px;">
+                <input id="quickRemTitle" class="input" placeholder="Новая задача или покупки через запятую..." />
+                <select id="quickRemType" class="select">
+                  <option value="reminder">В напоминания</option>
+                  <option value="shopping">В покупки</option>
+                </select>
+                <button class="btn btn-primary" onclick="addQuickReminder()">Добавить</button>
+              </div>
+
+              <div>
+                <h2 style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">Активные напоминания</h2>
+                <ul id="remindersList" class="clean-list">
+                  <li class="empty-hint">Загрузка напоминаний...</li>
+                </ul>
+              </div>
+
+              <div>
+                <h2 style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px;">Список покупок (Shopping)</h2>
+                <ul id="shoppingList" class="clean-list">
+                  <li class="empty-hint">Загрузка списка покупок...</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Git статус, Code Review и Заметки -->
+          <div class="right-column">
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">Git Репозиторий и Голосовой Code Review</h2>
+                <span id="gitBranchBadge" class="pill tabular">main</span>
+              </div>
+              <div class="panel-body">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                  <button class="btn btn-primary btn-sm" onclick="runGitReview(false)">Сводка изменений (ИИ)</button>
+                  <button class="btn btn-sm" onclick="runGitReview(true)">Озвучить сводку на Станции</button>
+                  <button class="btn btn-sm" onclick="runTestsFromUi()">Запустить тесты</button>
+                </div>
+
+                <div id="gitSummaryBox" class="chat-item" style="display: none;">
+                  <div class="chat-a" id="gitSummaryText"></div>
+                </div>
+
+                <ul id="gitFilesList" class="clean-list" style="font-family: var(--font-mono); font-size: 0.75rem;">
+                  <li class="empty-hint">Загрузка статуса Git...</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">Последние заметки (Apple Notes)</h2>
+              </div>
+              <div class="panel-body">
+                <ul id="notesList" class="clean-list">
+                  <li class="empty-hint">Загрузка заметок...</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ВКЛАДКА 5: СИСТЕМНЫЕ ЛОГИ И SSH -->
+      <section id="tab-logs" class="tab-pane">
+        <div class="panel">
+          <div class="panel-header">
+            <h1 class="panel-title">Системные журналы и SSH-диагностика колонки</h1>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select id="logSourceSelect" class="select" style="width: 230px;" onchange="loadLogs()">
+                <option value="stderr">Оркестратор Mac (stderr.log)</option>
+                <option value="stdout">HTTP-трафик (stdout.log)</option>
+                <option value="station">Яндекс Станция по SSH (mictap)</option>
+              </select>
+              <input id="logSearchInput" class="input" style="width: 210px;" placeholder="Фильтр строк (INFO, ERROR)..." oninput="loadLogs()" />
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkAutoRefreshLogs" checked />
+                <span>Автообновление</span>
+              </label>
+              <button class="btn btn-sm" onclick="loadLogs()">Обновить</button>
+              <button class="btn btn-sm" onclick="stationAction('restart_mictap')">Перезапустить mictap (SSH)</button>
+              <button class="btn btn-sm" onclick="stationAction('chime')">Тест звука</button>
+            </div>
+          </div>
+
+          <div class="metrics-strip">
+            <div class="metric-cell">
+              <span class="metric-label">Статус SSH (192.168.2.83:2222)</span>
+              <span id="sshOnlineVal" class="metric-val">Проверка...</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Аптайм колонки</span>
+              <span id="sshUptimeVal" class="metric-val">н/д</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Загрузка CPU (LoadAvg)</span>
+              <span id="sshLoadVal" class="metric-val">н/д</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">ОЗУ Станции</span>
+              <span id="sshRamVal" class="metric-val">н/д</span>
+            </div>
+            <div class="metric-cell">
+              <span class="metric-label">Демоны (mictap / glagold)</span>
+              <span id="sshDaemonsVal" class="metric-val">н/д</span>
+            </div>
+          </div>
+
+          <div class="panel-body">
+            <pre id="logTerminal" class="log-terminal">Загрузка системного журнала...</pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script>
+    let activeTab = 'overview';
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('visible');
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => el.classList.remove('visible'), 3200);
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function switchTab(tabId, btnEl) {
+      activeTab = tabId;
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      const target = document.getElementById('tab-' + tabId);
+      if (target) target.classList.add('active');
+      if (btnEl) btnEl.classList.add('active');
+
+      if (tabId === 'journal') loadJournal();
+      if (tabId === 'productivity') loadProductivity();
+      if (tabId === 'logs') {
+        loadLogs();
+        loadStationTelemetry();
+      }
+    }
+
+    async function apiFetch(url, options = {}) {
+      const res = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        ...options,
+      });
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    function formatVoiceLabel(voiceStr) {
+      if (!voiceStr) return 'Piper Ирина';
+      if (voiceStr.includes('Svetlana')) return 'Светлана (Edge)';
+      if (voiceStr.includes('Dmitry')) return 'Дмитрий (Edge)';
+      if (voiceStr.includes('Dariya')) return 'Дария (Edge)';
+      if (voiceStr.includes('piper') || voiceStr.includes('irina')) return 'Ирина (Piper)';
+      return voiceStr;
+    }
+
+    async function refreshOverview() {
+      try {
+        const data = await apiFetch('/api/overview');
+        document.getElementById('stationDot').classList.remove('offline');
+        document.getElementById('topAsr').textContent = data.pipeline?.asr?.primary || 'groq';
+        document.getElementById('topLlm').textContent = data.pipeline?.llm?.primary || 'chain';
+        document.getElementById('topTts').textContent = formatVoiceLabel(data.tts_config?.voice);
+
+        const totalCalls = data.stats?.total_calls ?? 0;
+        document.getElementById('topCalls').textContent = totalCalls;
+        document.getElementById('navCallsBadge').textContent = totalCalls;
+        document.getElementById('sideAvgLatency').textContent = (data.stats?.avg_latency_sec ?? 0).toFixed(2) + ' с';
+
+        document.getElementById('chkDetailedMode').checked = Boolean(data.detailed_mode);
+
+        // Музыка
+        const mus = data.music || {};
+        const badge = document.getElementById('musicStateBadge');
+        if (mus.playing) {
+          badge.textContent = 'Играет';
+          badge.className = 'pill online';
+          document.getElementById('nowPlayingTrack').textContent = mus.track || 'Радиопоток Apple Music';
+          document.getElementById('nowPlayingArtist').textContent = mus.artist || 'Яндекс Станция по AirPlay';
+        } else {
+          badge.textContent = 'Пауза / Стоп';
+          badge.className = 'pill';
+          if (mus.track) {
+            document.getElementById('nowPlayingTrack').textContent = mus.track;
+            document.getElementById('nowPlayingArtist').textContent = mus.artist || 'На паузе';
+          }
+        }
+
+        // Таймеры
+        renderTimers(data.timers || []);
+      } catch (e) {
+        document.getElementById('stationDot').classList.add('offline');
+      }
+    }
+
+    function renderTimers(timers) {
+      const list = document.getElementById('activeTimersList');
+      if (!timers.length) {
+        list.innerHTML = '<li class="empty-hint">Нет активных таймеров или будильников.</li>';
+        return;
+      }
+      list.innerHTML = timers
+        .map(
+          t => `
+        <li>
+          <span><strong>${escapeHtml(t.label)}</strong> (${t.kind === 'alarm' ? 'Будильник' : 'Таймер'})</span>
+          <span class="pill online tabular">осталось ${escapeHtml(t.remaining_str)}</span>
+        </li>`
+        )
+        .join('');
+    }
+
+    async function loadRecentFeed() {
+      try {
+        const data = await apiFetch('/api/calls?limit=15');
+        const calls = data.calls || [];
+        const feed = document.getElementById('chatFeed');
+        if (!calls.length) return;
+        feed.innerHTML = calls
+          .map(
+            c => `
+          <div class="chat-item">
+            <div class="chat-item-header">
+              <div>
+                <span class="route-tag">${escapeHtml(c.route || 'LLM')}</span>
+                <span style="margin-left: 6px;">${c.source === 'voice' ? 'Голос со станции' : c.source === 'say' ? 'Диктор TTS' : 'Веб-панель'}</span>
+              </div>
+              <span class="tabular">${escapeHtml(c.time_str)} · ${(c.seconds?.total || 0).toFixed(2)} с</span>
+            </div>
+            <div class="chat-q">Запрос: ${escapeHtml(c.transcript)}</div>
+            <div class="chat-a">${escapeHtml(c.answer)}</div>
+          </div>`
+          )
+          .join('');
+      } catch (e) {}
+    }
+
+    async function sendChat(overrideText) {
+      const input = document.getElementById('chatInput');
+      const text = (overrideText || input.value || '').trim();
+      if (!text) return;
+
+      const btn = document.getElementById('btnSendChat');
+      btn.disabled = true;
+      const speakStation = document.getElementById('chkSpeakStation').checked;
+      const playBrowser = document.getElementById('chkPlayBrowser').checked;
+
+      try {
+        if (!overrideText) input.value = '';
+        const res = await apiFetch('/api/chat', {
+          method: 'POST',
+          body: JSON.stringify({
+            text,
+            speak_station: speakStation,
+            return_audio: playBrowser,
+          }),
+        });
+
+        if (res.audio_wav_base64 && playBrowser) {
+          const player = document.getElementById('browserAudioPlayer');
+          player.src = 'data:audio/wav;base64,' + res.audio_wav_base64;
+          player.style.display = 'block';
+          player.play().catch(() => {});
+        }
+
+        await loadRecentFeed();
+        await refreshOverview();
+      } catch (e) {
+        showToast('Ошибка: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function sendQuickCommand(cmdText) {
+      document.getElementById('chatInput').value = cmdText;
+      sendChat(cmdText);
+    }
+
+    async function toggleDetailedMode(enabled) {
+      try {
+        await apiFetch('/api/config/voice', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider: 'edge',
+            voice: 'ru-RU-SvetlanaNeural',
+            detailed_mode: enabled,
+          }),
+        });
+        showToast(enabled ? 'Включён умный (подробный) режим' : 'Включён краткий режим');
+      } catch (e) {
+        showToast('Ошибка переключения режима');
+      }
+    }
+
+    async function resetContext() {
+      await apiFetch('/reset', { method: 'POST' });
+      showToast('Контекст диалога очищен');
+    }
+
+    async function emergencyStop() {
+      await apiFetch('/api/station/action', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'stop_all' }),
+      });
+      showToast('Все звуки, музыка и таймеры остановлены');
+      refreshOverview();
+    }
+
+    async function triggerFindIphone() {
+      const res = await apiFetch('/api/station/action', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'find_iphone' }),
+      });
+      showToast(res.message || 'Открыт Локатор для поиска iPhone');
+      loadRecentFeed();
+    }
+
+    async function stationAction(action, value = null) {
+      try {
+        const res = await apiFetch('/api/station/action', {
+          method: 'POST',
+          body: JSON.stringify({ action, value }),
+        });
+        if (res.message) showToast(res.message);
+      } catch (e) {
+        showToast('Ошибка: ' + e.message);
+      }
+    }
+
+    async function musicAction(action, target = '', seconds = 20) {
+      try {
+        const res = await apiFetch('/api/music/action', {
+          method: 'POST',
+          body: JSON.stringify({ action, target, seconds }),
+        });
+        if (res.message) showToast(res.message);
+        setTimeout(refreshOverview, 900);
+      } catch (e) {
+        showToast('Ошибка Apple Music: ' + e.message);
+      }
+    }
+
+    async function quickTimer(seconds, label) {
+      const res = await apiFetch('/api/timers/create', {
+        method: 'POST',
+        body: JSON.stringify({ seconds, label, kind: 'timer' }),
+      });
+      showToast(res.message);
+      renderTimers(res.timers || []);
+    }
+
+    async function createCustomTimer() {
+      const mins = Number(document.getElementById('customTimerMin').value || 5);
+      const label = document.getElementById('customTimerLabel').value.trim() || `${mins} мин`;
+      await quickTimer(Math.max(1, mins) * 60, label);
+      document.getElementById('customTimerLabel').value = '';
+    }
+
+    async function cancelAllTimers() {
+      await apiFetch('/api/timers/cancel', { method: 'POST' });
+      showToast('Все таймеры сброшены');
+      renderTimers([]);
+    }
+
+    async function displayAction(action, val) {
+      try {
+        const payload = { action: action };
+        if (action === 'scroll' || action === 'show') {
+          payload.text = String(val || '');
+          if (!payload.text) {
+            showToast('Введите текст для дисплея');
+            return;
+          }
+        } else if (action === 'face') {
+          payload.text = String(val || 'happy');
+          payload.duration = 6;
+        } else if (action === 'temp') {
+          payload.value = val;
+        } else if (action === 'brightness') {
+          payload.value = Number(val);
+        } else if (action === 'eq') {
+          payload.duration = Number(val || 15);
+        }
+        const res = await apiFetch('/api/display/action', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        showToast('Команда дисплея выполнена: ' + action);
+      } catch (err) {
+        showToast('Ошибка дисплея: ' + err.message);
+      }
+    }
+
+    /* Вкладка 2: Журнал вызовов */
+    function sourceBadgeHtml(src) {
+      if (src === 'voice') return '<span class="source-badge source-voice">Голос со станции</span>';
+      if (src === 'web') return '<span class="source-badge source-web">Веб-панель</span>';
+      if (src === 'say') return '<span class="source-badge source-say">Озвучка TTS</span>';
+      return '<span class="source-badge source-system">Система</span>';
+    }
+
+    async function loadJournal() {
+      try {
+        const src = document.getElementById('journalSourceFilter').value;
+        const q = document.getElementById('journalSearchInput').value;
+        const data = await apiFetch(`/api/calls?limit=120&source=${encodeURIComponent(src)}&search=${encodeURIComponent(q)}`);
+
+        const st = data.stats || {};
+        document.getElementById('statTotalCalls').textContent = st.total_calls ?? 0;
+        document.getElementById('statVoiceCalls').textContent = st.voice_calls ?? 0;
+        document.getElementById('statWebCalls').textContent = st.web_calls ?? 0;
+        document.getElementById('statSayCalls').textContent = st.say_calls ?? 0;
+        document.getElementById('statAvgSec').textContent = (st.avg_latency_sec ?? 0).toFixed(2) + ' с';
+
+        const calls = data.calls || [];
+        const tbody = document.getElementById('journalTableBody');
+        if (!calls.length) {
+          tbody.innerHTML = '<tr><td colspan="7" class="empty-hint">Записей пока нет.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = calls
+          .map(
+            c => `
+          <tr>
+            <td class="tabular" style="white-space: nowrap;">
+              <div><strong>${escapeHtml(c.time_str)}</strong></div>
+              <div style="color: var(--text-secondary); font-size: 0.75rem;">${escapeHtml(c.date_str)}</div>
+            </td>
+            <td>${sourceBadgeHtml(c.source)}</td>
+            <td><span class="route-tag">${escapeHtml(c.route || 'LLM')}</span></td>
+            <td style="max-width: 280px;">${escapeHtml(c.transcript)}</td>
+            <td style="max-width: 420px;">${escapeHtml(c.answer)}</td>
+            <td class="tabular" style="white-space: nowrap; color: var(--text-secondary);">
+              <div>Всего: <strong style="color: var(--text-primary);">${(c.seconds?.total || 0).toFixed(2)} с</strong></div>
+              <div style="font-size: 0.72rem;">ASR ${(c.seconds?.asr || 0).toFixed(2)} · LLM ${(c.seconds?.llm || 0).toFixed(2)} · TTS ${(c.seconds?.tts || 0).toFixed(2)}</div>
+            </td>
+            <td style="white-space: nowrap;">
+              <button class="btn btn-sm" onclick="repeatSpeech(${JSON.stringify(c.answer).replace(/"/g, '&quot;')})" title="Озвучить этот ответ на колонке">Озвучить</button>
+            </td>
+          </tr>`
+          )
+          .join('');
+      } catch (e) {
+        showToast('Ошибка загрузки журнала: ' + e.message);
+      }
+    }
+
+    async function repeatSpeech(text) {
+      if (!text) return;
+      await apiFetch('/api/tts', {
+        method: 'POST',
+        body: JSON.stringify({ text, station: true, chime: false, return_audio: false }),
+      });
+      showToast('Озвучиваю на Яндекс Станции...');
+    }
+
+    async function clearJournal() {
+      await apiFetch('/api/calls', { method: 'DELETE' });
+      showToast('Журнал вызовов очищен');
+      loadJournal();
+      refreshOverview();
+    }
+
+    /* Вкладка 3: Студия речи */
+    async function runTtsStudio() {
+      const text = document.getElementById('ttsStudioText').value.trim();
+      if (!text) return;
+      const voice = document.getElementById('ttsStudioVoice').value;
+      const rate = document.getElementById('ttsStudioRate').value;
+      const station = document.getElementById('ttsPlayStation').checked;
+      const chime = document.getElementById('ttsWithChime').checked;
+
+      const btn = document.getElementById('btnRunTts');
+      btn.disabled = true;
+      try {
+        const res = await apiFetch('/api/tts', {
+          method: 'POST',
+          body: JSON.stringify({
+            text,
+            station,
+            chime,
+            return_audio: true,
+            voice,
+            rate,
+          }),
+        });
+        if (res.audio_wav_base64) {
+          const player = document.getElementById('ttsStudioAudio');
+          player.src = 'data:audio/wav;base64,' + res.audio_wav_base64;
+          player.style.display = 'block';
+          if (!station) player.play().catch(() => {});
+        }
+        showToast(`Синтезировано за ${res.seconds} с`);
+        refreshOverview();
+      } catch (e) {
+        showToast('Ошибка синтеза: ' + e.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function saveDefaultVoice(provider, voice) {
+      try {
+        await apiFetch('/api/config/voice', {
+          method: 'POST',
+          body: JSON.stringify({ provider, voice, rate: '+0%' }),
+        });
+        showToast('Активный голос переключён: ' + formatVoiceLabel(voice));
+        refreshOverview();
+      } catch (e) {
+        showToast('Ошибка смены голоса: ' + e.message);
+      }
+    }
+
+    /* Вкладка 4: Продуктивность и Git */
+    async function loadProductivity() {
+      try {
+        const data = await apiFetch('/api/productivity');
+        const rems = data.reminders || [];
+        const shop = data.shopping || [];
+        const notes = data.notes || [];
+        const git = data.git || {};
+
+        document.getElementById('remindersList').innerHTML = rems.length
+          ? rems
+              .map(
+                r => `
+            <li>
+              <span>${escapeHtml(r.title)}</span>
+              <span class="pill tabular">${r.due ? escapeHtml(r.due.slice(0, 16).replace('T', ' ')) : 'Без срока'}</span>
+            </li>`
+              )
+              .join('')
+          : '<li class="empty-hint">Нет активных напоминаний.</li>';
+
+        document.getElementById('shoppingList').innerHTML = shop.length
+          ? shop.map(s => `<li><span>${escapeHtml(s.title)}</span><span class="pill">Покупки</span></li>`).join('')
+          : '<li class="empty-hint">Список покупок пуст.</li>';
+
+        document.getElementById('notesList').innerHTML = notes.length
+          ? notes
+              .map(
+                n => `
+            <li style="flex-direction: column; align-items: flex-start; gap: 4px;">
+              <strong>${escapeHtml(n.title)}</strong>
+              <span style="color: var(--text-secondary); font-size: 0.8125rem;">${escapeHtml((n.body || '').slice(0, 160))}</span>
+            </li>`
+              )
+              .join('')
+          : '<li class="empty-hint">Заметки не найдены.</li>';
+
+        document.getElementById('gitBranchBadge').textContent = `${git.repo || 'repo'} : ${git.branch || 'main'} (${git.modified_count || 0})`;
+        const gFiles = git.files || [];
+        document.getElementById('gitFilesList').innerHTML = gFiles.length
+          ? gFiles
+              .map(
+                f => `
+            <li>
+              <span>${escapeHtml(f.file)}</span>
+              <span class="pill tabular">${escapeHtml(f.status)}</span>
+            </li>`
+              )
+              .join('')
+          : '<li class="empty-hint">В рабочей директории чисто, незакоммиченных файлов нет.</li>';
+      } catch (e) {
+        showToast('Ошибка загрузки данных: ' + e.message);
+      }
+    }
+
+    async function addQuickReminder() {
+      const input = document.getElementById('quickRemTitle');
+      const title = input.value.trim();
+      if (!title) return;
+      const list_type = document.getElementById('quickRemType').value;
+      const res = await apiFetch('/api/productivity/reminder', {
+        method: 'POST',
+        body: JSON.stringify({ title, list_type }),
+      });
+      input.value = '';
+      showToast(res.message || 'Добавлено');
+      loadProductivity();
+    }
+
+    async function runGitReview(speak) {
+      showToast('Анализирую git status и diff через ИИ...');
+      const res = await apiFetch(`/api/dev/git-summary?speak_station=${speak}`, { method: 'POST' });
+      const box = document.getElementById('gitSummaryBox');
+      document.getElementById('gitSummaryText').textContent = res.summary || '';
+      box.style.display = 'flex';
+      if (speak) showToast('Озвучиваю сводку изменений на колонке');
+    }
+
+    async function runTestsFromUi() {
+      showToast('Запускаю автотесты проекта...');
+      const res = await apiFetch('/api/dev/run-tests', { method: 'POST' });
+      const box = document.getElementById('gitSummaryBox');
+      document.getElementById('gitSummaryText').textContent = res.result || '';
+      box.style.display = 'flex';
+    }
+
+    /* Вкладка 5: Системные логи и SSH */
+    async function loadLogs() {
+      try {
+        const src = document.getElementById('logSourceSelect').value;
+        const q = document.getElementById('logSearchInput').value;
+        const data = await apiFetch(`/api/logs?source=${encodeURIComponent(src)}&lines=160&search=${encodeURIComponent(q)}`);
+        const term = document.getElementById('logTerminal');
+        const lines = data.lines || [];
+        if (!lines.length) {
+          term.textContent = 'Журнал пуст или нет совпадений по фильтру.';
+          return;
+        }
+        term.innerHTML = lines
+          .map(ln => {
+            const safe = escapeHtml(ln);
+            if (ln.includes('ERROR') || ln.includes('Traceback')) return `<span class="log-line-err">${safe}</span>`;
+            if (ln.includes('WARNING')) return `<span class="log-line-warn">${safe}</span>`;
+            if (ln.includes('INFO')) return `<span class="log-line-info">${safe}</span>`;
+            return safe;
+          })
+          .join('\n');
+        term.scrollTop = term.scrollHeight;
+      } catch (e) {}
+    }
+
+    async function loadStationTelemetry() {
+      try {
+        const t = await apiFetch('/api/station/telemetry');
+        if (t.online) {
+          document.getElementById('sideSshStatus').textContent = 'Онлайн';
+          document.getElementById('sideSshStatus').style.color = '#86efac';
+          document.getElementById('sidePing').textContent = `${t.ping_ms} мс`;
+          document.getElementById('sideMem').textContent = `${t.mem_used_mb} / ${t.mem_total_mb} МБ`;
+
+          document.getElementById('sshOnlineVal').textContent = `Онлайн (${t.ping_ms} мс)`;
+          document.getElementById('sshUptimeVal').textContent = t.uptime_str || '—';
+          document.getElementById('sshLoadVal').textContent = t.loadavg || '—';
+          document.getElementById('sshRamVal').textContent = `${t.mem_used_mb} / ${t.mem_total_mb} МБ`;
+          const sv = t.services || {};
+          document.getElementById('sshDaemonsVal').textContent = `mictap: ${sv.mictap ? 'OK' : 'OFF'} · glagold: ${sv.glagold ? 'OK' : 'OFF'}`;
+        } else {
+          document.getElementById('sideSshStatus').textContent = 'Оффлайн';
+          document.getElementById('sideSshStatus').style.color = '#fca5a5';
+          document.getElementById('sshOnlineVal').textContent = 'Недоступна по SSH';
+        }
+      } catch (e) {}
+    }
+
+    // Инициализация и фоновый опрос
+    refreshOverview();
+    loadRecentFeed();
+    loadStationTelemetry();
+
+    setInterval(() => {
+      refreshOverview();
+      if (activeTab === 'overview') loadRecentFeed();
+      if (activeTab === 'logs' && document.getElementById('chkAutoRefreshLogs').checked) {
+        loadLogs();
+      }
+    }, 3000);
+
+    setInterval(loadStationTelemetry, 12000);
+  </script>
+</body>
+</html>

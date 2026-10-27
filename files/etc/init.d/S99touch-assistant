@@ -1,0 +1,30 @@
+#!/bin/sh
+DAEMON=/data/mictap/touch-assistant
+PID=/var/run/touch-assistant.pid
+LOG=/tmp/touch-assistant.log
+
+case "$1" in
+  start)
+    chmod +x "$DAEMON" 2>/dev/null || true
+    [ -x "$DAEMON" ] || exit 0
+    if [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; then exit 0; fi
+    (
+      sleep 2
+      ALSA_CONFIG_PATH=/etc/alsa-mictap.conf ASSISTANT_URL="http://192.168.2.85:8730" "$DAEMON" >> "$LOG" 2>&1 &
+      echo $! > "$PID"
+    ) &
+    ;;
+  stop)
+    [ -f "$PID" ] && kill "$(cat "$PID")" 2>/dev/null
+    rm -f "$PID"
+    ;;
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac

@@ -1,0 +1,42 @@
+# Портативный стек ассистента (для переноса на Raspberry Pi 5 / домашний NAS)
+# На Mac M5 для максимальной скорости ASR используется mlx-whisper нативно на Metal.
+# Этот Compose-стек использует faster-whisper + Piper + Ollama на CPU/CUDA.
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: station-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_KEEP_ALIVE=60m
+
+  assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: station-assistant
+    restart: unless-stopped
+    ports:
+      - "8730:8730"
+    depends_on:
+      - ollama
+    environment:
+      - ASSISTANT_HOST=0.0.0.0
+      - ASSISTANT_PORT=8730
+      - ASSISTANT_LANGUAGE=ru
+      - ASR_PROVIDER=faster_whisper
+      - ASR_MODEL=large-v3-turbo
+      - LLM_PROVIDER=ollama
+      - LLM_MODEL=qwen3.5:4b
+      - OLLAMA_URL=http://ollama:11434
+      - TTS_PROVIDER=piper
+      - PIPER_VOICE=voices/ru_RU-irina-medium.onnx
+      - ASSISTANT_HISTORY=6
+    volumes:
+      - ./voices:/app/voices:ro
+
+volumes:
+  ollama_models:

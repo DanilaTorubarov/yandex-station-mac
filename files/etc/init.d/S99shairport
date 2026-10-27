@@ -1,0 +1,34 @@
+#!/bin/sh
+DAEMON=/system/vendor/quasar/bin/shairport-sync
+CONF=/etc/shairport-sync.conf
+PID=/var/run/shairport.pid
+LOG=/tmp/shairport.log
+
+case "$1" in
+  start)
+    [ -x "$DAEMON" ] || exit 0
+    killall -9 shairport-sync 2>/dev/null || true
+    mkdir -p /var/run
+    (
+      sleep 2
+      ALSA_CONFIG_PATH=/etc/alsa-mictap.conf "$DAEMON" -c "$CONF" >> "$LOG" 2>&1 &
+      echo $! > "$PID"
+      echo "$(date) init: shairport pid=$(cat $PID)" >> "$LOG"
+      /etc/airplay-free.sh 2>/dev/null || true
+    ) &
+    ;;
+  stop)
+    killall -9 shairport-sync 2>/dev/null || true
+    [ -f "$PID" ] && kill "$(cat "$PID")" 2>/dev/null || true
+    rm -f "$PID"
+    ;;
+  restart)
+    "$0" stop
+    sleep 1
+    "$0" start
+    ;;
+  *)
+    echo "usage: $0 {start|stop|restart}"
+    exit 1
+    ;;
+esac

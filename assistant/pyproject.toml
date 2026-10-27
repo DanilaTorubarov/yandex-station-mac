@@ -1,0 +1,17 @@
+[project]
+name = "station-assistant"
+version = "0.1.0"
+description = "Локальный голосовой конвейер для Яндекс Станции Мини 2"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "mlx-whisper>=0.4.1",
+    "piper-tts>=1.8",
+    "edge-tts>=7.3.1",
+]
+
+[tool.uv]
+package = false
