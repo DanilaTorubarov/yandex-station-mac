@@ -533,13 +533,17 @@ def api_music_action(req: MusicActionRequest) -> dict[str, Any]:
 def api_display_action(req: DisplayActionRequest) -> dict[str, Any]:
     from .display_tools import (
         clear_display,
+        reset_display_to_native,
         set_display_brightness,
+        set_night_mode,
         show_display_clock,
+        show_display_date,
         show_display_equalizer,
         show_display_face,
         show_display_temperature,
         show_display_text,
         show_display_timer,
+        show_display_volume,
     )
     act = req.action
     if act == "show":
@@ -558,6 +562,16 @@ def api_display_action(req: DisplayActionRequest) -> dict[str, Any]:
         return show_display_timer(sec)
     if act == "clock":
         return show_display_clock()
+    if act == "date":
+        return show_display_date()
+    if act == "vol":
+        lvl = int(req.value) if str(req.value).isdigit() else 50
+        return show_display_volume(lvl)
+    if act == "night":
+        on = str(req.value).lower() in ("1", "true", "on")
+        return set_night_mode(on)
+    if act in ("reset", "native"):
+        return reset_display_to_native()
     if act == "clear":
         return clear_display()
     if act == "brightness":

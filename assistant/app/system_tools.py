@@ -286,6 +286,13 @@ def set_station_volume(lvl: int) -> int:
     except Exception:
         pass
 
+    # Индикация уровня громкости на дисплее Станции (напр. U 70)
+    try:
+        from .display_tools import show_display_volume
+        show_display_volume(clamped * 10)
+    except Exception:
+        pass
+
     return clamped
 
 

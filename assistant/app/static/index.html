@@ -1091,8 +1091,10 @@
                   </svg>
                   <span>LED-дисплей Яндекс Станции</span>
                 </h2>
-                <div style="display: flex; gap: 6px;">
+                <div style="display: flex; gap: 6px; flex-wrap: wrap;">
                   <button class="btn btn-sm" onclick="displayAction('clock')">Часы</button>
+                  <button class="btn btn-sm" onclick="displayAction('date')">Дата</button>
+                  <button class="btn btn-sm" onclick="displayAction('reset')" style="color: #f87171; border-color: rgba(248, 113, 113, 0.3);" title="Мгновенный возврат к 100% заводским часам">Заводские часы</button>
                   <button class="btn btn-sm btn-danger" onclick="displayAction('clear')">Погасить</button>
                 </div>
               </div>
@@ -1106,7 +1108,7 @@
                 </div>
 
                 <!-- Эмоции и рожицы -->
-                <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500;">Эмоции и анимации:</div>
+                <div style="font-size: 12px; color: var(--text-dim); margin-bottom: 6px; font-weight: 500;">Режимы и анимации:</div>
                 <div class="quick-chips" style="margin-bottom: 14px;">
                   <button class="chip" onclick="displayAction('face', 'happy')">^  ^ Радость</button>
                   <button class="chip" onclick="displayAction('face', 'sleep')">-  - Сон</button>
@@ -1116,6 +1118,9 @@
                   <button class="chip" onclick="displayAction('face', 'talk')">^ oo ^ Говорящий</button>
                   <button class="chip" onclick="displayAction('face', 'dizzy')">*  * Спиннер</button>
                   <button class="chip" onclick="displayAction('eq', 15)">~ ~ Эквалайзер</button>
+                  <button class="chip" onclick="displayAction('vol', 70)">🔊 Тест U 70</button>
+                  <button class="chip" onclick="displayAction('night', '1')">🌙 Ночь</button>
+                  <button class="chip" onclick="displayAction('night', '0')">☀️ День</button>
                 </div>
 
                 <!-- Температура и яркость -->
@@ -1716,6 +1721,14 @@
           payload.value = Number(val);
         } else if (action === 'eq') {
           payload.duration = Number(val || 15);
+        } else if (action === 'vol') {
+          payload.value = Number(val || 50);
+        } else if (action === 'night') {
+          payload.value = String(val || '1');
+        } else if (action === 'reset') {
+          payload.action = 'reset';
+        } else if (action === 'date') {
+          payload.duration = 4;
         }
         const res = await apiFetch('/api/display/action', {
           method: 'POST',

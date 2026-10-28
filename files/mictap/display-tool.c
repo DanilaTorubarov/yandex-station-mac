@@ -356,6 +356,59 @@ static void cmd_temp(const char *val_str, int duration_secs) {
     }
 }
 
+/* Команда: громкость (U 10 .. U 90, U100) */
+static void cmd_volume(int pct) {
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    uint8_t d1 = char_to_mask('U');
+    uint8_t d2 = 0, d3 = 0, d4 = 0;
+    if (pct == 100) {
+        d2 = char_to_mask('1');
+        d3 = char_to_mask('0');
+        d4 = char_to_mask('0');
+    } else if (pct >= 10) {
+        d2 = 0;
+        d3 = char_to_mask('0' + (pct / 10));
+        d4 = char_to_mask('0' + (pct % 10));
+    } else {
+        d2 = 0;
+        d3 = 0;
+        d4 = char_to_mask('0' + pct);
+    }
+    render_raw(d1, d2, d3, d4, 0, 0, 0, default_brightness);
+    usleep(1500000); /* 1.5 с */
+    if (keep_running) cmd_clock(1);
+}
+
+/* Команда: дата (DD:MM) */
+static void cmd_date(int seconds) {
+    time_t now = time(NULL);
+    struct tm *tm = localtime(&now);
+    int day = tm->tm_mday;
+    int mon = tm->tm_mon + 1;
+    uint8_t d1 = char_to_mask('0' + day / 10);
+    uint8_t d2 = char_to_mask('0' + day % 10);
+    uint8_t d3 = char_to_mask('0' + mon / 10);
+    uint8_t d4 = char_to_mask('0' + mon % 10);
+    render_raw(d1, d2, d3, d4, 1, 0, 0, default_brightness);
+    if (seconds > 0) {
+        sleep(seconds);
+        if (keep_running) cmd_clock(1);
+    }
+}
+
+/* Команда: ночной режим (on=1 -> яркость 4, on=0 -> яркость 35) */
+static void cmd_night(int on) {
+    int b = on ? 4 : 35;
+    FILE *fp = fopen(BRIGHTNESS_FILE, "w");
+    if (fp) {
+        fprintf(fp, "%d\n", b);
+        fclose(fp);
+    }
+    default_brightness = b;
+    cmd_clock(1);
+}
+
 /* Команда: рожицы и эмоции */
 static void cmd_face(const char *name, int duration_secs) {
     uint64_t end_ms = (duration_secs > 0) ? ((uint64_t)time(NULL) + duration_secs) * 1000 : 0;
@@ -547,8 +600,12 @@ int main(int argc, char **argv) {
                "  face <имя> [сек]           Эмоция: happy, sleep, cool, wink, love, talk, think, dizzy\n"
                "  eq [сек]                   Анимированный эквалайзер\n"
                "  timer <секунды>            Таймер обратного отсчёта\n"
+               "  vol <0..100>               Показать громкость (напр. U 50)\n"
+               "  date [сек]                 Показать текущую дату (ДД:ММ)\n"
+               "  night <1|0>                Ночной режим (1: тусклый, 0: норма)\n"
                "  clock [сек]                Отображение текущего времени\n"
                "  brightness <1..255>        Установить и сохранить яркость\n"
+               "  reset                      Сброс дисплея к заводским часам\n"
                "  clear                      Погасить все сегменты и индикаторы\n");
         return 0;
     }
@@ -579,6 +636,18 @@ int main(int argc, char **argv) {
 
     if (strcmp(cmd, "clear") == 0) {
         clear_display();
+    } else if (strcmp(cmd, "reset") == 0) {
+        stop_other_instances();
+        clear_display();
+    } else if (strcmp(cmd, "vol") == 0) {
+        int pct = (argc >= 3) ? atoi(argv[2]) : 50;
+        cmd_volume(pct);
+    } else if (strcmp(cmd, "date") == 0) {
+        int secs = (argc >= 3) ? atoi(argv[2]) : 3;
+        cmd_date(secs);
+    } else if (strcmp(cmd, "night") == 0) {
+        int on = (argc >= 3) ? atoi(argv[2]) : 1;
+        cmd_night(on);
     } else if (strcmp(cmd, "show") == 0) {
         const char *txt = (argc >= 3) ? argv[2] : "";
         int colon = (strchr(txt, ':') != NULL);

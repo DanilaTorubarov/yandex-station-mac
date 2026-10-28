@@ -99,6 +99,31 @@ def set_display_brightness(level: int) -> dict[str, Any]:
     return {"ok": ok, "brightness": lvl}
 
 
+def show_display_date(seconds: int = 3) -> dict[str, Any]:
+    """Показывает текущую дату (ДД:ММ) на дисплее."""
+    ok = _run_display_cmd(["date", str(seconds)], async_mode=True)
+    return {"ok": ok, "mode": "date", "seconds": seconds}
+
+
+def show_display_volume(percent: int) -> dict[str, Any]:
+    """Кратковременно показывает уровень громкости (U 50..U100) на дисплее."""
+    pct = max(0, min(100, int(percent)))
+    ok = _run_display_cmd(["vol", str(pct)], async_mode=True)
+    return {"ok": ok, "mode": "vol", "percent": pct}
+
+
+def set_night_mode(enabled: bool) -> dict[str, Any]:
+    """Переключает ночной (тусклый 4) и дневной (35) режим дисплея."""
+    ok = _run_display_cmd(["night", "1" if enabled else "0"], async_mode=False)
+    return {"ok": ok, "mode": "night", "enabled": enabled}
+
+
+def reset_display_to_native() -> dict[str, Any]:
+    """Мгновенно сбрасывает дисплей к заводскому фабричному виду Quasar."""
+    ok = _run_display_cmd(["reset"], async_mode=False)
+    return {"ok": ok, "mode": "reset"}
+
+
 def clear_display() -> dict[str, Any]:
     """Гасит все сегменты и индикаторы дисплея."""
     ok = _run_display_cmd(["clear"], async_mode=False)
@@ -109,7 +134,30 @@ def try_handle_display_command(text: str) -> str | None:
     """Голосовые команды управления экраном/дисплеем колонки."""
     t_lower = text.strip().lower()
 
-    # 1. Смайлики / Эмоции
+    # 0. Мгновенный откат к заводскому режиму
+    if any(p in t_lower for p in (
+        "сбрось часы", "сбрось дисплей", "сбрось экран",
+        "заводские часы", "заводской дисплей", "заводской экран",
+        "стандартные часы", "стандартный дисплей", "стандартный экран",
+        "откати часы", "откати дисплей", "выключи эффекты дисплея", "выключи эффекты экрана"
+    )):
+        reset_display_to_native()
+        return "Сбросила экран в стандартный заводской режим."
+
+    # 1. Дата
+    if any(p in t_lower for p in ("какая дата на экране", "покажи дату", "выведи дату", "какое число на экране")):
+        show_display_date(4)
+        return "Вывела текущую дату на экран."
+
+    # 2. Ночной / дневной режим
+    if any(p in t_lower for p in ("ночной режим дисплея", "ночной режим экрана", "ночной режим часов", "ночной экран")):
+        set_night_mode(True)
+        return "Включила ночной режим дисплея с мягкой подсветкой."
+    if any(p in t_lower for p in ("дневной режим дисплея", "дневной режим экрана", "дневной режим часов")):
+        set_night_mode(False)
+        return "Вернула дневную яркость дисплея."
+
+    # 3. Смайлики / Эмоции
     if any(p in t_lower for p in ("улыбнись", "покажи улыбку", "сделай улыбку", "радостное лицо")):
         show_display_face("happy", 5)
         return "Улыбаюсь!"
