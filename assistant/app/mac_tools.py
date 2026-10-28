@@ -858,6 +858,76 @@ def _try_handle_messenger_command(t: str, t_lower: str, llm) -> str | None:
     return res
 
 
+def _try_handle_active_chat_type_command(t: str, t_lower: str, llm) -> str | None:
+    """
+    Печать/вставка текста в текущее активное окно, чат или IDE (Antigravity, Cursor, Terminal, чат и т.д.):
+    - «в чат напиши: используй telegram.org для проверки»
+    - «напиши в antigravity: продолжай работу»
+    - «отправь в чат: проверено, запускай»
+    - «вставь в поле ввода: ...»
+    """
+    if any(w in t_lower for w in ("ворд", "word", "документ", "блокнот", "заметк", "записк", "заявлен")):
+        return None
+
+    # Не перехватываем, если указан мессенджер с конкретным контактом (напр. «в телеграм маме напиши...»)
+    if any(w in t_lower for w in ("телеграм", "телегу", "телеге", "ватсап", "дискорд")) and re.search(
+        r"\b(маме|папе|брату|сестре|[а-яёa-z]+)\b", t_lower
+    ):
+        return None
+
+    m = re.search(
+        r"(?:^(?:а\s+)?(?:ты\s+)?(?:можешь\s+|пожалуйста\s+)*(?:мне\s+)?)"
+        r"(?:напиши|отправь|вставь|напечатай|закинь|скинь)\s+"
+        r"(?:в\s+(?:чат|антигравити|antigravity|окно|поле\s+ввода|консоль|терминал)|антигравити|antigravity)"
+        r"[\s,.:;-]+(?P<text>.+)$",
+        t,
+        re.IGNORECASE,
+    )
+    if not m:
+        m = re.search(
+            r"(?:^(?:а\s+)?(?:ты\s+)?(?:можешь\s+|пожалуйста\s+)*(?:мне\s+)?)"
+            r"(?:в\s+(?:чат|антигравити|antigravity|окно|поле\s+ввода)|антигравити|antigravity)\s+"
+            r"(?:напиши|отправь|вставь|напечатай|закинь|скинь)"
+            r"[\s,.:;-]+(?P<text>.+)$",
+            t,
+            re.IGNORECASE,
+        )
+
+    if not m:
+        return None
+
+    raw_text = m.group("text").strip(" .!?,:;")
+    if not raw_text:
+        return None
+
+    # Если пользователь сказал «чтобы он использовал...», формулируем от второго лица через LLM
+    if re.search(r"\b(?:чтобы\s+(?:он|она|они|ассистент|бот))\b", raw_text, re.IGNORECASE):
+        user_prompt = (
+            f"Пользователь диктует указание для ИИ-ассистента в чате: «{raw_text}».\n"
+            "Сформулируй готовое чёткое указание от лица пользователя для чата (1-2 предложения).\n"
+            "Отвечай ТОЛЬКО готовым текстом сообщения без кавычек."
+        )
+        msg_text = llm.chat_custom(
+            system_prompt="Ты преобразуешь косвенную просьбу пользователя в прямое обращение/команду для чата. Отвечай только готовым текстом.",
+            user_prompt=user_prompt,
+            num_predict=150,
+        ).strip().strip('"').strip("'")
+    else:
+        msg_text = raw_text
+
+    copy_to_clipboard(msg_text)
+    front_app = get_frontmost_app() or "чат"
+    paste_into_app(front_app)
+
+    is_send = any(w in t_lower for w in ("отправь", "пошли", "закинь"))
+    if is_send:
+        time.sleep(0.25)
+        subprocess.run(["osascript", "-e", 'tell application "System Events" to key code 36'], check=False)
+        return f"Отправила в {front_app}: {msg_text}"
+
+    return f"Вставила в {front_app}: {msg_text}"
+
+
 def has_Reply_or_Messenger(has_messenger_word: bool, has_reply_or_contact: bool, t_lower: str) -> bool:
     if has_reply_or_contact:
         return True
@@ -1558,6 +1628,11 @@ def try_handle_mac_command(text: str, llm) -> str | None:
     if msg_res:
         return msg_res
 
+    # 0c2. Прямая печать / вставка в открытый чат или IDE (Antigravity, Cursor, активное окно)
+    chat_type_res = _try_handle_active_chat_type_command(t, t_lower, llm)
+    if chat_type_res:
+        return chat_type_res
+
     # 0d. Умный буфер обмена (Clipboard AI: переведи скопированное, исправь ошибки в буфере и вставь обратно, перескажи)
     clip_res = _try_handle_clipboard_command(t, t_lower, llm)
     if clip_res:
@@ -1574,6 +1649,34 @@ def try_handle_mac_command(text: str, llm) -> str | None:
             )
 
         app_ctx = f"Активное окно сейчас: {front_app}. " if front_app else ""
+
+        # Проверка 1: Просьба написать/отправить текст в открытый чат или IDE (Antigravity, Cursor, Terminal и т.д.)
+        wants_chat_insert = bool(
+            re.search(r"\b(напиши|вставь|отправь|введи|напечатай|закинь|скинь)\b", t_lower)
+            and any(w in t_lower for w in ("чат", "антигравити", "antigravity", "окно", "поле ввода", "консоль", "терминал"))
+        )
+
+        if wants_chat_insert:
+            user_prompt = (
+                f"{app_ctx}Пользователь смотрит на свой экран и просит написать/отправить сообщение в открытый чат (Antigravity, IDE или редактор): «{t}».\n"
+                "Сформулируй ТОЧНЫЙ, готовый текст сообщения или запроса для ассистента в чате с учётом того, что открыто на экране.\n"
+                "Отвечай ТОЛЬКО текстом, который нужно вставить в чат, без кавычек, вводных слов, пояснений и мета-комментариев."
+            )
+            chat_text = llm.chat_vision(
+                system_prompt="Ты преобразуешь голосовую команду пользователя по содержимому экрана в точный готовый текст для отправки в чат проекта. Отвечай только готовым текстом.",
+                user_prompt=user_prompt,
+                image_b64=img_b64,
+                num_predict=350,
+            ).strip().strip('"').strip("'")
+
+            copy_to_clipboard(chat_text)
+            paste_into_app(front_app)
+            if any(w in t_lower for w in ("отправь", "пошли", "закинь")):
+                time.sleep(0.25)
+                subprocess.run(["osascript", "-e", 'tell application "System Events" to key code 36'], check=False)
+                return f"Отправила в чат: {chat_text}"
+            return f"Вставила в чат: {chat_text}"
+
         wants_doc_insert = bool(
             re.search(r"\b(напиши|вставь|сохрани|запиши)\b", t_lower)
             and any(w in t_lower for w in ("ворд", "word", "документ", "блокнот", "заметк", "редактор"))
