@@ -585,6 +585,9 @@ def _try_handle_files_and_screenshots_command(t: str, t_lower: str) -> str | Non
                 # Для слова «документы» или «программы» без слова «папка» проверяем, чтобы не путать с Google Docs
                 if label in ("папку Документы", "папку Программы") and not has_folder_word:
                     continue
+                # Для «Рабочего стола» без слова «папка» запрос обрабатывается как «показать рабочий стол» (скрыть окна)
+                if label == "Рабочий стол" and not has_folder_word:
+                    continue
                 subprocess.run(["open", str(folder_path)], check=False, timeout=5)
                 return f"Открываю {label} на компьютере."
 
@@ -616,8 +619,138 @@ def _try_handle_files_and_screenshots_command(t: str, t_lower: str) -> str | Non
     return None
 
 
+# --- 4. Управление окнами и рабочим столом ------------------------------------
+
+def hide_all_windows() -> str:
+    """
+    Скрывает все окна открытых приложений и сворачивает окна Finder,
+    открывая чистый рабочий стол macOS.
+    """
+    script = """
+    tell application "System Events"
+        try
+            set visible of (every process whose visible is true and name is not "Finder") to false
+        end try
+    end tell
+    tell application "Finder"
+        try
+            set collapsed of every window to true
+        end try
+    end tell
+    """
+    try:
+        subprocess.run(["osascript", "-e", script], check=False, timeout=5)
+    except Exception as exc:
+        log.warning("Ошибка скрытия окон: %s", exc)
+    return "Скрыла все окна на компьютере."
+
+
+def restore_all_windows() -> str:
+    """Возвращает / разворачивает все скрытые окна обратно на экран."""
+    script = """
+    tell application "System Events"
+        try
+            set visible of every process to true
+        end try
+    end tell
+    """
+    try:
+        subprocess.run(["osascript", "-e", script], check=False, timeout=5)
+    except Exception as exc:
+        log.warning("Ошибка восстановления окон: %s", exc)
+    return "Вернула все окна на экран."
+
+
+def hide_current_window() -> str:
+    """Сворачивает / скрывает текущее активное окно."""
+    script = """
+    tell application "System Events"
+        try
+            set visible of first process whose frontmost is true to false
+        end try
+    end tell
+    """
+    try:
+        subprocess.run(["osascript", "-e", script], check=False, timeout=5)
+    except Exception as exc:
+        log.warning("Ошибка скрытия текущего окна: %s", exc)
+    return "Свернула текущее окно."
+
+
+def _try_handle_window_management_command(t: str, t_lower: str) -> str | None:
+    """
+    Обработка команд скрытия/сворачивания всех окон и показа рабочего стола:
+    - «скрой все окна», «спрячь все окна», «сверни все окна», «убери все окна», «закрой все окна»
+    - «скоро все окна» (фонетическая ошибка ASR вместо «скрой»)
+    - «покажи рабочий стол», «открой на компьютере рабочий стол» (без слова «папка»)
+    - «очисти экран», «сверни всё»
+    - «верни окна», «покажи все окна», «разверни окна»
+    - «скрой это окно», «сверни окно»
+    """
+    # Игнорируем команды полноэкранного режима для видео/плеера («сверни полный экран»)
+    if any(w in t_lower for w in ("полный экран", "полноэкран")):
+        return None
+
+    # Запрос на открытие папки в Finder («открой папку рабочий стол») не должен перехватываться
+    is_folder_request = any(w in t_lower for w in ("папк", "finder", "файндер"))
+
+    # 1. Показать рабочий стол / выйти на рабочий стол (без упоминания папки)
+    desktop_match = (
+        bool(re.search(r"\b(?:покажи|показать|открой|открыть|выйди|перейди)\b.*\bрабоч\w*\s+стол\b", t_lower))
+        and not is_folder_request
+    )
+    clear_screen_match = bool(re.search(r"\b(?:очисти|очистить)\b.*\b(?:экран\w*|дисплей|рабоч\w*\s+стол)\b", t_lower))
+
+    # 2. Скрыть / свернуть все окна («скрой все окна», «скоро все окна», «сверни всё»)
+    hide_all_match = bool(
+        re.search(
+            r"\b(?:скрой|скрыть|спрячь|спрятать|сверни|свернуть|убери|убрать|закрой|закрыть|скоро)\b.*\b(?:все\s+окна|вс[её]\s+окна|окна|экраны|вс[её])\b",
+            t_lower,
+        )
+    )
+
+    if desktop_match or clear_screen_match:
+        hide_all_windows()
+        return "Показываю рабочий стол, скрыла все окна."
+
+    if hide_all_match:
+        return hide_all_windows()
+
+    # 3. Вернуть / восстановить окна («верни окна», «покажи все окна», «разверни окна»)
+    restore_match = (
+        bool(
+            re.search(
+                r"\b(?:верни|вернуть|покажи|показать|разверни|развернуть|восстанови|восстановить)\b.*\b(?:все\s+окна|вс[её]\s+окна|окна\s+назад|окна\s+обратно|окна)\b",
+                t_lower,
+            )
+        )
+        and not desktop_match
+    )
+    if restore_match:
+        return restore_all_windows()
+
+    # 4. Скрыть одно текущее окно («скрой это окно», «сверни окно»)
+    single_window_match = (
+        bool(
+            re.search(
+                r"\b(?:скрой|скрыть|спрячь|спрятать|сверни|свернуть)\b.*\b(?:это\s+окно|текущ\w*\s+окно|окно)\b",
+                t_lower,
+            )
+        )
+        and not hide_all_match
+    )
+    if single_window_match:
+        return hide_current_window()
+
+    return None
+
+
 def try_handle_system_command(t: str, t_lower: str) -> str | None:
     """Единая точка входа для системных команд управления Mac."""
+    win_res = _try_handle_window_management_command(t, t_lower)
+    if win_res:
+        return win_res
+
     vol_res = _try_handle_volume_command(t, t_lower)
     if vol_res:
         return vol_res
