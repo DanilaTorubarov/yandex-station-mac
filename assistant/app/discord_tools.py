@@ -474,7 +474,52 @@ _NO_AX = (
 
 # --- Микрофон и звук (чекбоксы «Заглушить» / «Откл. звук» в панели пользователя)
 
-def _set_discord_checkbox(labels: list[str], want_on: bool | None) -> bool | None:
+_MUTE_LABELS = [
+    "заглушить",
+    "разглушить",
+    "включить микрофон",
+    "выключить микрофон",
+    "откл. микрофон",
+    "отключить микрофон",
+    "mute",
+    "unmute",
+]
+_MUTE_EXCLUDE = (
+    "больше настроек",
+    "настроек",
+    "параметры",
+    "звук",
+    "камер",
+    "видео",
+    "стрим",
+)
+
+_DEAFEN_LABELS = [
+    "откл. звук",
+    "отключить звук",
+    "включить звук",
+    "заглушить звук",
+    "разглушить звук",
+    "звук",
+    "deafen",
+    "undeafen",
+]
+_DEAFEN_EXCLUDE = (
+    "больше настроек",
+    "настроек",
+    "параметры",
+    "микрофон",
+    "камер",
+    "звуковая панель",
+)
+
+
+def _set_discord_checkbox(
+    labels: list[str],
+    want_on: bool | None,
+    exclude: tuple[str, ...] = (),
+    hotkey_code: int | None = None,
+) -> bool | None:
     """
     Находит чекбокс Discord, читает его состояние и нажимает только при необходимости.
     Возвращает итоговое состояние (True = включён «Заглушить»/«Откл. звук»), либо None,
@@ -482,46 +527,49 @@ def _set_discord_checkbox(labels: list[str], want_on: bool | None) -> bool | Non
     """
     if not ax_available():
         return None
-    hit = _ax_find(labels, roles={"AXCheckBox", "AXToggle", "AXSwitch", "AXButton"})
+
+    # Закрываем случайные всплывающие меню (например, меню стрелочки настроек микрофона)
+    press_key_cg(53)  # Escape
+    time.sleep(0.05)
+
+    # Приоритет 1: постоянный системный чекбокс в панели пользователя внизу слева (AXCheckBox)
+    hit = _ax_find(labels, roles={"AXCheckBox"}, exclude=exclude)
+    # Приоритет 2: кнопка в активном звонке
+    if not hit:
+        hit = _ax_find(labels, roles={"AXToggle", "AXSwitch", "AXButton"}, exclude=exclude)
     if not hit:
         return None
+
     state = hit.get("checked")
     if want_on is not None and state is not None and state == want_on:
+        log.info("Discord чекбокс '%s' уже в состоянии %s, переключение не требуется", hit.get("label"), state)
         return state
-    _ax_find([hit["label"]], roles={hit["role"]}, press=True)
+
+    # Нажимаем целевой чекбокс через AXPress
+    _ax_find(labels, roles={hit["role"]}, press=True, exclude=exclude)
     time.sleep(0.25)
-    after = _ax_find([hit["label"]], roles={hit["role"]})
+
+    after = _ax_find(labels, roles={hit["role"]}, exclude=exclude)
     if after and after.get("checked") is not None:
-        return after["checked"]
+        state_after = after["checked"]
+        if want_on is None or state_after == want_on:
+            return state_after
+
+    # Если через AX состояние не поменялось, используем глобальный хоткей Discord
+    if hotkey_code is not None:
+        press_key_cg(hotkey_code, cmd=True, shift=True)
+        time.sleep(0.25)
+        after_hotkey = _ax_find(labels, roles={"AXCheckBox"}, exclude=exclude)
+        if after_hotkey and after_hotkey.get("checked") is not None:
+            return after_hotkey["checked"]
+
     return want_on if want_on is not None else (not state if state is not None else None)
-
-
-_MUTE_LABELS = [
-    "заглушить микрофон",
-    "включить микрофон",
-    "выключить микрофон",
-    "откл. микрофон",
-    "отключить микрофон",
-    "микрофон",
-    "mute",
-    "unmute",
-]
-_DEAFEN_LABELS = [
-    "разглушить",
-    "заглушить",
-    "откл. звук",
-    "отключить звук",
-    "включить звук",
-    "звук",
-    "deafen",
-    "undeafen",
-]
 
 
 def discord_toggle_mute(mute: bool | None = None) -> str:
     """Включает или выключает микрофон в Discord (по состоянию чекбокса; хоткей Cmd+Shift+M — запасной)."""
     _activate_discord()
-    state = _set_discord_checkbox(_MUTE_LABELS, mute)
+    state = _set_discord_checkbox(_MUTE_LABELS, mute, exclude=_MUTE_EXCLUDE, hotkey_code=46)
     if state is None:
         press_key_cg(46, cmd=True, shift=True)
         state = mute
@@ -535,7 +583,7 @@ def discord_toggle_mute(mute: bool | None = None) -> str:
 def discord_toggle_deafen(deafen: bool | None = None) -> str:
     """Включает или выключает звук (Deafen) в Discord (по состоянию чекбокса; Cmd+Shift+D — запасной)."""
     _activate_discord()
-    state = _set_discord_checkbox(_DEAFEN_LABELS, deafen)
+    state = _set_discord_checkbox(_DEAFEN_LABELS, deafen, exclude=_DEAFEN_EXCLUDE, hotkey_code=2)
     if state is None:
         press_key_cg(2, cmd=True, shift=True)
         state = deafen
