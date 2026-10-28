@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
+import os
+import socket
 import subprocess
 import tempfile
 import time
@@ -35,16 +38,63 @@ STATIC_INDEX_HTML = Path(__file__).resolve().parent / "static" / "index.html"
 settings = Settings.load()
 assistant: Assistant | None = None
 watcher: MacEventsWatcher | None = None
+sync_task: asyncio.Task | None = None
+
+
+def get_mac_lan_ip() -> str:
+    for iface in ("en0", "en1", "en2", "bridge0"):
+        try:
+            res = subprocess.run(["ipconfig", "getifaddr", iface], capture_output=True, text=True, timeout=1)
+            ip = res.stdout.strip()
+            if ip and not ip.startswith("127."):
+                return ip
+        except Exception:
+            pass
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("192.168.2.1", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return ""
+
+
+async def _station_ip_sync_loop():
+    station_ip = os.environ.get("STATION_IP", "192.168.2.83")
+    station_port = int(os.environ.get("STATION_SSH_PORT", "2222"))
+    last_synced_ip = None
+    while True:
+        try:
+            current_ip = get_mac_lan_ip()
+            if current_ip and current_ip != last_synced_ip:
+                cmd = [
+                    "ssh", "-p", str(station_port),
+                    "-o", "ConnectTimeout=2",
+                    "-o", "StrictHostKeyChecking=no",
+                    f"root@{station_ip}",
+                    f"grep -q 'http://{current_ip}:8730' /etc/init.d/S99touch-assistant || "
+                    f"(mount -o remount,rw /; sed -i 's|http://.*:8730|http://{current_ip}:8730|g' /etc/init.d/S99touch-assistant; /etc/init.d/S99touch-assistant restart)"
+                ]
+                proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+                await asyncio.wait_for(proc.wait(), timeout=4.0)
+                if proc.returncode == 0:
+                    last_synced_ip = current_ip
+                    log.info("Синхронизирован IP Mac (%s) с Яндекс Станцией (%s)", current_ip, station_ip)
+        except Exception:
+            pass
+        await asyncio.sleep(60)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global assistant, watcher
+    global assistant, watcher, sync_task
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     assistant = Assistant(settings)
+    sync_task = asyncio.create_task(_station_ip_sync_loop())
     if settings.llm_provider != "ollama":
         try:
             httpx.post(
@@ -65,6 +115,8 @@ async def lifespan(app: FastAPI):
         settings.tts_provider,
     )
     yield
+    if sync_task:
+        sync_task.cancel()
     if watcher:
         watcher.stop()
 

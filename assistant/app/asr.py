@@ -61,7 +61,7 @@ class GroqASR:
         self.language = language
         self.model = model
         self.client = httpx.Client(
-            timeout=15.0,
+            timeout=httpx.Timeout(12.0, connect=2.5),
             headers={"Authorization": f"Bearer {self.api_key}"},
         )
 

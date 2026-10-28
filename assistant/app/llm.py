@@ -63,7 +63,7 @@ class GroqLLM:
         self.vision_model = vision_model
         self.temperature = temperature
         self.client = httpx.Client(
-            timeout=18.0,
+            timeout=httpx.Timeout(15.0, connect=2.5),
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "Content-Type": "application/json",
@@ -187,7 +187,7 @@ class OpenRouterLLM:
         self.model = self.models[0] if self.models else "deepseek/deepseek-chat-v3-0324:free"
         self.temperature = temperature
         self.client = httpx.Client(
-            timeout=22.0,
+            timeout=httpx.Timeout(18.0, connect=2.5),
             headers={
                 "Authorization": f"Bearer {self.api_key}",
                 "HTTP-Referer": "https://github.com/yandex-station-mini2-toolkit",
@@ -288,7 +288,7 @@ class GeminiLLM:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
-        self.client = httpx.Client(timeout=22.0)
+        self.client = httpx.Client(timeout=httpx.Timeout(18.0, connect=2.5))
 
     def _generate(self, sys_text: str, contents: list[dict], max_out: int) -> str:
         models = list(dict.fromkeys([self.model, "gemini-3.8-flash", "gemini-3.5-flash", "gemini-flash-latest"]))
