@@ -639,6 +639,7 @@ int main(int argc, char **argv) {
     } else if (strcmp(cmd, "reset") == 0) {
         stop_other_instances();
         clear_display();
+        cmd_clock(1);
     } else if (strcmp(cmd, "vol") == 0) {
         int pct = (argc >= 3) ? atoi(argv[2]) : 50;
         cmd_volume(pct);
