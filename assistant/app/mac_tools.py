@@ -105,7 +105,78 @@ SITE_ALIASES: dict[str, str] = {
     "почта": "https://mail.google.com",
     "gmail": "https://mail.google.com",
     "переводчик": "https://translate.google.com",
+    "solw": "https://solw.me",
+    "solw.me": "https://solw.me",
+    "a.solw.me": "https://a.solw.me",
 }
+
+
+def extract_website_url(target: str) -> tuple[str, str] | None:
+    """
+    Преобразует голосовой запрос на открытие сайта или веб-страницы в (URL, человекопонятное_имя).
+    Поддерживает:
+    - Алиасы: ютуб, гитхаб, яндекс, гугл, почта, переводчик
+    - Домены Danila (solw.me, a.solw.me) с защитой от созвучных опечаток Whisper (solve.me, soft.me, сольв)
+    - Прямые адреса и домены: a.solw.me, github.com, t.me, https://...
+    - Голосовые точки: «а точка солв точка ми»
+    - Явные запросы «открой сайт <любой>»
+    """
+    raw = target.strip(" .,!?:;")
+    clean = re.sub(
+        r"\b(?:на\s+компе|на\s+компьютере|на\s+маке|у\s+меня|в\s+браузере|пожалуйста|плиз|быстро|сейчас)\b",
+        "",
+        raw,
+        flags=re.IGNORECASE,
+    ).strip(" .,!?:;")
+
+    if not clean:
+        return None
+
+    low = clean.lower()
+
+    # Специфический перехват solw.me / a.solw.me с защитой от ошибок ASR (solve.me, soft.me, сольв)
+    if any(k in low for k in ("solw", "solve.me", "soft.me", "сольв", "солв")):
+        if any(p in low for p in ("a.", "a ", "а.", "а ", "a-")):
+            return ("https://a.solw.me", "a.solw.me")
+        return ("https://solw.me", "solw.me")
+
+    is_explicit_site = bool(
+        re.search(r"\b(?:сайт|веб-?сайт|страниц\w*|ссылк\w*|адрес|вкладк\w*)\b", clean, flags=re.IGNORECASE)
+    )
+    domain_part = re.sub(
+        r"^(?:открой|открыть|перейди\s+на|зайди\s+на)?\s*(?:на\s+)?(?:сайт|веб-?сайт|страницу|страница|ссылку|ссылка|адрес)\s+",
+        "",
+        clean,
+        flags=re.IGNORECASE,
+    ).strip(" .,!?:;")
+
+    d_low = domain_part.lower()
+    if d_low in SITE_ALIASES:
+        return (SITE_ALIASES[d_low], domain_part)
+
+    domain_part_dots = re.sub(r"\s+(?:точка|дот|dot)\s+", ".", domain_part, flags=re.IGNORECASE)
+    domain_part_dots = re.sub(
+        r"(?<=[a-zA-Z0-9])\s+(?:точка|дот|dot)(?=\s+[a-zA-Z0-9]|$)", ".", domain_part_dots, flags=re.IGNORECASE
+    )
+    domain_clean = domain_part_dots.replace(" ", "")
+
+    d_clean_low = domain_clean.lower()
+    if d_clean_low in SITE_ALIASES:
+        return (SITE_ALIASES[d_clean_low], domain_clean)
+
+    if re.match(r"^https?://", domain_clean, flags=re.IGNORECASE):
+        return (domain_clean, domain_clean)
+
+    if re.match(r"^[a-zA-Z0-9_\-]+\.[a-zA-Z0-9_\-\.]+(?::\d+)?(?:/.*)?$", domain_clean):
+        return (f"https://{domain_clean}", domain_clean)
+
+    if re.match(r"^localhost(?::\d+)?(?:/.*)?$", domain_clean, flags=re.IGNORECASE):
+        return (f"http://{domain_clean}", domain_clean)
+
+    if is_explicit_site and domain_part:
+        return (f"https://www.google.com/search?q={urllib.parse.quote(domain_part)}", f"сайт {domain_part}")
+
+    return None
 
 DOC_EDITOR_CANDIDATES = [
     "Microsoft Word",
@@ -411,7 +482,7 @@ _WRITE_CONTEXT_WORDS = (
 
 _OPEN_Pattern = re.compile(
     r"(?:^(?:а\s+)?(?:ты\s+)?(?:можешь|сможешь)?(?:\s+пожалуйста)?(?:\s+мне)?(?:\s+на\s+(?:компе|компьютере|маке))?\s*)?"
-    r"\b(?:открой|открыть|запусти|запустить|включи|включить)(?:\s+мне)?(?:\s+на\s+(?:компе|компьютере|маке))?"
+    r"\b(?:открой|открыть|запусти|запустить|включи|включить|перейди|перейти|зайди|зайти)(?:\s+мне)?(?:\s+на\s+(?:компе|компьютере|маке))?"
     r"[\s,.:;-]+(?P<target>.+)$",
     re.IGNORECASE,
 )
@@ -1767,11 +1838,13 @@ def try_handle_mac_command(text: str, llm) -> str | None:
         # Если в той же фразе просят «открой ворд и напиши ...» — она уже обработана в п. 1
         target_clean = re.sub(r"\b(на компе|на компьютере|на маке|у меня)\b", "", target_raw, flags=re.IGNORECASE).strip(" .,!?:;")
 
-        # Проверяем сайты (ютуб, гитхаб, гугл, почта)
-        for site_key, site_url in SITE_ALIASES.items():
-            if target_clean.lower() == site_key or f"сайт {site_key}" in target_clean.lower():
-                subprocess.run(["open", site_url], check=False, timeout=5)
-                return f"Открываю {site_key} на компьютере."
+        # Проверяем сайты, URL и веб-страницы (a.solw.me, youtube.com, github.com, сайт ..., https://...)
+        site_info = extract_website_url(target_clean)
+        if site_info:
+            site_url, site_label = site_info
+            log.info("Команда Mac open_site: '%s' -> '%s'", target_clean, site_url)
+            subprocess.run(["open", site_url], check=False, timeout=5)
+            return f"Открываю {site_label} на компьютере."
 
         app_name = resolve_app(target_clean)
         if app_name:
