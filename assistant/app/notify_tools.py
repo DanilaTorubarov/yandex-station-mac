@@ -15,6 +15,16 @@ from typing import Callable
 import numpy as np
 
 from .audio import to_wav_bytes
+from .discord_tools import (
+    _CF_ARRAY_TYPE,
+    _HAS_AX,
+    _ax,
+    _ax_copy,
+    _ax_str,
+    _cf,
+    _cfstr,
+    _kCFBooleanTrue,
+)
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +85,7 @@ def play_wav_on_station(wav_bytes: bytes, fallback_mac: bool = False) -> bool:
         remote_cmd = (
             "cat > /tmp/mac_notify.wav && "
             "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay.*mac_notify/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
-            "ALSA_CONFIG_PATH=/etc/alsa-mictap.conf /usr/bin/aplay -N -q -D dmix_spk_plug /tmp/mac_notify.wav; "
+            "/usr/bin/aplay -N -q -D dmix_spk_plug /tmp/mac_notify.wav; "
             "rm -f /tmp/mac_notify.wav"
         )
         try:
@@ -136,6 +146,142 @@ def announce_on_station_async(
     threading.Thread(target=_worker, daemon=True).start()
 
 
+# --- Парсинг уведомлений Google Calendar / расписания macOS ------------------
+
+_CALENDAR_SERVICE_NAMES = {
+    "notification center",
+    "script editor",
+    "google chrome",
+    "safari",
+    "chrome",
+    "calendar",
+    "календарь",
+    "google calendar",
+    "гугл календарь",
+    "гугл",
+    "google",
+    "calendar.google.com",
+    "iphone",
+    "iphone mirroring",
+    "mirroring",
+    "дублирование iphone",
+}
+
+
+def parse_calendar_notification(texts: list[str]) -> str | None:
+    """
+    Распознаёт уведомления календаря (Google Calendar, Календарь macOS, iPhone Mirroring)
+    и формирует текст для озвучки на колонке:
+    - Предварительное: 'У вас через 30 минут English.'
+    - О начале: 'У вас English.'
+    """
+    combined = " | ".join(texts)
+    low = combined.lower()
+
+    # Проверяем маркеры календаря / событий / расписания
+    is_calendar = any(
+        w in low
+        for w in (
+            "calendar",
+            "календар",
+            "расписани",
+            "встреч",
+            "событи",
+            "урок",
+            "заняти",
+            "пара",
+            "meet.google",
+            "zoom",
+        )
+    )
+
+    content_lines: list[str] = []
+    for t in texts:
+        t_strip = t.strip()
+        t_low = t_strip.lower()
+        if t_low in _CALENDAR_SERVICE_NAMES:
+            continue
+        parts = [p.strip() for p in re.split(r"[,•|·]", t_strip) if p.strip()]
+        meaningful_parts = [p for p in parts if p.lower() not in _CALENDAR_SERVICE_NAMES]
+        if meaningful_parts:
+            content_lines.append(" ".join(meaningful_parts))
+
+    if not content_lines:
+        return None
+
+    tokens: list[str] = []
+    for line in content_lines:
+        for word_seq in line.split("   "):
+            w = word_seq.strip()
+            if w and w not in tokens:
+                tokens.append(w)
+    unique_text = " ".join(tokens)
+    full_low = unique_text.lower()
+
+    if not is_calendar and not any(
+        w in full_low
+        for w in (
+            "через ",
+            "in ",
+            "минут",
+            "мин.",
+            "начинается",
+            "сейчас",
+            "встреча",
+            "урок",
+            "вебинар",
+        )
+    ):
+        return None
+
+    # Ищем время («через 30 минут», «in 30 minutes», «через 15 мин», «через час»)
+    time_part: str | None = None
+    m_time_ru = re.search(r"\bчерез\s+(\d+)\s*(минут[а-я]*|мин\.?|ч(?:ас[а-я]*)?)\b", full_low)
+    if m_time_ru:
+        time_part = m_time_ru.group(0).strip()
+        time_part = re.sub(r"\bмин\.?\b", "минут", time_part)
+    else:
+        m_time_en = re.search(r"\bin\s+(\d+)\s*(mins?|minutes?|hours?)\b", full_low)
+        if m_time_en:
+            num = m_time_en.group(1)
+            unit = m_time_en.group(2)
+            if "hour" in unit:
+                time_part = f"через {num} ч."
+            else:
+                time_part = f"через {num} минут"
+
+    # Очищаем название события от времени, интервалов часов и сервисных слов
+    cleaned_event = unique_text
+    cleaned_event = re.sub(
+        r"\bчерез\s+\d+\s*(?:минут[а-я]*|мин\.?|час[а-я]*)\b", "", cleaned_event, flags=re.IGNORECASE
+    )
+    cleaned_event = re.sub(
+        r"\bin\s+\d+\s*(?:mins?|minutes?|hours?)\b", "", cleaned_event, flags=re.IGNORECASE
+    )
+    cleaned_event = re.sub(r"\b\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?\b", "", cleaned_event)
+    cleaned_event = re.sub(
+        r"\b(?:напоминание|событие|начинается|сейчас|сегодня|запланировано|starting now|starts now|reminder)\b",
+        "",
+        cleaned_event,
+        flags=re.IGNORECASE,
+    )
+
+    words = cleaned_event.split()
+    dedup_words: list[str] = []
+    for w in words:
+        if not dedup_words or w.lower() != dedup_words[-1].lower():
+            dedup_words.append(w)
+    cleaned_event = " ".join(dedup_words).strip(" .,!?:;-•|")
+
+    if not cleaned_event:
+        cleaned_event = "событие по расписанию"
+
+    if time_part:
+        return f"У вас {time_part} {cleaned_event}."
+    else:
+        return f"У вас {cleaned_event}."
+
+
 # --- Фоновый мониторинг завершённых скачиваний в ~/Downloads -----------------
 
 _TEMP_DOWNLOAD_SUFFIXES = (".crdownload", ".download", ".part", ".tmp", ".partial")
@@ -155,8 +301,10 @@ def _humanize_filename_for_speech(filename: str) -> str:
 
 class MacEventsWatcher:
     """
-    Лёгкий фоновый наблюдатель (0 МБ лишней памяти):
-    следит за папкой ~/Downloads и озвучивает на колонке, когда скачивание файла завершилось.
+    Лёгкий фоновый наблюдатель (~0.5 мс на проверку, нулевой оверхед по памяти):
+    1. Следит за всплывающими уведомлениями macOS (Google Calendar, расписание, напоминания)
+       через нативный Accessibility API NotificationCenter и озвучивает их на Яндекс Станции.
+    2. Следит за папкой ~/Downloads и озвучивает на колонке завершение скачивания файлов.
     """
 
     def __init__(self, tts_speak_fn: Callable[[str], tuple[bytes, int]]) -> None:
@@ -165,6 +313,100 @@ class MacEventsWatcher:
         self._stop = threading.Event()
         self._known_files: set[str] = set()
         self._last_announce_ts = 0.0
+        self._nc_pid: int | None = None
+        self._nc_pid_ts = 0.0
+        self._announced_notifications: dict[str, float] = {}
+
+    def _get_notification_center_pid(self) -> int | None:
+        now = time.time()
+        if self._nc_pid and (now - self._nc_pid_ts < 300.0):
+            return self._nc_pid
+        try:
+            res = subprocess.run(
+                ["pgrep", "-x", "NotificationCenter"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            pids = [int(p) for p in res.stdout.split() if p.strip().isdigit()]
+            if pids:
+                self._nc_pid = pids[0]
+                self._nc_pid_ts = now
+                return self._nc_pid
+        except Exception:
+            pass
+        return None
+
+    def _poll_notification_center(self) -> None:
+        if not _HAS_AX:
+            return
+        pid = self._get_notification_center_pid()
+        if not pid:
+            return
+        try:
+            app = _ax.AXUIElementCreateApplication(pid)
+            if not app:
+                return
+            _ax.AXUIElementSetAttributeValue(app, _cfstr("AXManualAccessibility"), _kCFBooleanTrue)
+            wins = _ax_copy(app, "AXWindows")
+            _cf.CFRelease(app)
+            if not wins:
+                return
+            count = _cf.CFArrayGetCount(wins) if (_cf.CFGetTypeID(wins) == _CF_ARRAY_TYPE) else 0
+            if count <= 0:
+                _cf.CFRelease(wins)
+                return
+
+            def extract_texts(el, lines: list[str], depth: int = 0) -> None:
+                if depth > 10:
+                    return
+                title = _ax_str(el, "AXTitle")
+                desc = _ax_str(el, "AXDescription")
+                val = _ax_str(el, "AXValue")
+                for s in (title, desc, val):
+                    s = s.strip()
+                    if s and s not in lines:
+                        lines.append(s)
+                kids = _ax_copy(el, "AXChildren")
+                if kids:
+                    if _cf.CFGetTypeID(kids) == _CF_ARRAY_TYPE:
+                        k_count = _cf.CFArrayGetCount(kids)
+                        for k_idx in range(k_count):
+                            child = _cf.CFArrayGetValueAtIndex(kids, k_idx)
+                            extract_texts(child, lines, depth + 1)
+                    _cf.CFRelease(kids)
+
+            now = time.time()
+            for i in range(count):
+                win = _cf.CFArrayGetValueAtIndex(wins, i)
+                lines: list[str] = []
+                extract_texts(win, lines)
+                if not lines:
+                    continue
+
+                speech = parse_calendar_notification(lines)
+                if not speech:
+                    continue
+
+                # Дедупликация: не повторять одно и то же уведомление в течение 120 секунд
+                key = speech.lower().strip()
+                last_time = self._announced_notifications.get(key, 0.0)
+                if now - last_time < 120.0:
+                    continue
+
+                self._announced_notifications[key] = now
+                log.info("Обнаружено уведомление календаря: %s -> озвучиваем: '%s'", lines, speech)
+                announce_on_station_async(speech, self.tts_speak_fn, with_chime=True)
+
+            _cf.CFRelease(wins)
+
+            # Очистка устаревших ключей дедупликации (> 10 минут)
+            if len(self._announced_notifications) > 50:
+                self._announced_notifications = {
+                    k: ts for k, ts in self._announced_notifications.items() if now - ts < 600.0
+                }
+        except Exception as exc:
+            log.debug("Ошибка проверки NotificationCenter: %s", exc)
 
     def _snapshot_downloads(self) -> set[str]:
         if not self.downloads_dir.is_dir():
@@ -180,6 +422,22 @@ class MacEventsWatcher:
             pass
         return res
 
+    def _check_downloads(self) -> None:
+        current = self._snapshot_downloads()
+        new_files = current - self._known_files
+        self._known_files = current
+        if new_files and (time.time() - self._last_announce_ts > 5.0):
+            time.sleep(1.0)
+            still_there = [f for f in new_files if (self.downloads_dir / f).exists()]
+            if still_there:
+                self._last_announce_ts = time.time()
+                if len(still_there) == 1:
+                    spoken_name = _humanize_filename_for_speech(still_there[0])
+                    msg = f"На компьютере завершилось скачивание файла {spoken_name}."
+                else:
+                    msg = f"На компьютере завершилось скачивание {len(still_there)} файлов."
+                announce_on_station_async(msg, self.tts_speak_fn, with_chime=True)
+
     def start(self) -> None:
         self._known_files = self._snapshot_downloads()
         threading.Thread(target=self._loop, daemon=True).start()
@@ -188,22 +446,18 @@ class MacEventsWatcher:
         self._stop.set()
 
     def _loop(self) -> None:
-        while not self._stop.wait(4.0):
+        downloads_interval = 4.0
+        last_downloads_check = 0.0
+        while not self._stop.wait(1.2):
+            now = time.time()
             try:
-                current = self._snapshot_downloads()
-                new_files = current - self._known_files
-                self._known_files = current
-                if new_files and (time.time() - self._last_announce_ts > 5.0):
-                    # Ждём 1 с и проверяем, что файл не временный и не удалён
-                    time.sleep(1.0)
-                    still_there = [f for f in new_files if (self.downloads_dir / f).exists()]
-                    if still_there:
-                        self._last_announce_ts = time.time()
-                        if len(still_there) == 1:
-                            spoken_name = _humanize_filename_for_speech(still_there[0])
-                            msg = f"На компьютере завершилось скачивание файла {spoken_name}."
-                        else:
-                            msg = f"На компьютере завершилось скачивание {len(still_there)} файлов."
-                        announce_on_station_async(msg, self.tts_speak_fn, with_chime=True)
+                self._poll_notification_center()
             except Exception as exc:
-                log.debug("Ошибка мониторинга Downloads: %s", exc)
+                log.debug("Ошибка в _poll_notification_center: %s", exc)
+
+            if now - last_downloads_check >= downloads_interval:
+                last_downloads_check = now
+                try:
+                    self._check_downloads()
+                except Exception as exc:
+                    log.debug("Ошибка в _check_downloads: %s", exc)
