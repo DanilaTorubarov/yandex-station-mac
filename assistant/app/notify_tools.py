@@ -83,6 +83,8 @@ def play_wav_on_station(wav_bytes: bytes, fallback_mac: bool = False) -> bool:
     """
     with _PLAY_LOCK:
         remote_cmd = (
+            "vol=$(amixer sget 'SPK Master' 2>/dev/null | awk '/Mono: Playback/ {print $3}'); "
+            "if [ \"$vol\" = \"0\" ] || [ -z \"$vol\" ]; then exit 0; fi; "
             "cat > /tmp/mac_notify.wav && "
             "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay.*mac_notify/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
             "/usr/bin/aplay -N -q -D dmix_spk_plug /tmp/mac_notify.wav; "

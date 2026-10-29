@@ -212,7 +212,7 @@ SPK_VOL_MAP = [
 
 
 def get_station_volume() -> int:
-    """Возвращает уровень громкости Яндекс Станции (от 1 до 10)."""
+    """Возвращает уровень громкости Яндекс Станции (от 0 до 10)."""
     try:
         res = subprocess.run(
             [
@@ -231,9 +231,11 @@ def get_station_volume() -> int:
             timeout=3,
         )
         val = int(res.stdout.strip())
+        if val <= 0:
+            return 0
         best_lvl = 5
         best_diff = 999
-        for i in range(1, 11):
+        for i in range(0, 11):
             d = abs(val - SPK_VOL_MAP[i])
             if d < best_diff:
                 best_diff = d
@@ -244,16 +246,24 @@ def get_station_volume() -> int:
 
 
 def set_station_volume(lvl: int) -> int:
-    """Устанавливает уровень громкости на Яндекс Станции (от 1 до 10)."""
-    clamped = max(1, min(10, int(lvl)))
-    master_val = int(round(clamped * 25.5))
-    if master_val > 255:
-        master_val = 255
-    spk_val = SPK_VOL_MAP[clamped]
-    cmd = (
-        f"amixer sset 'Master' {master_val} >/dev/null 2>&1 && "
-        f"amixer sset 'SPK Master' {spk_val} >/dev/null 2>&1"
-    )
+    """Устанавливает уровень громкости на Яндекс Станции (от 0 до 10, где 0 — полное выключение звука/mute)."""
+    clamped = max(0, min(10, int(lvl)))
+    if clamped == 0:
+        spk_val = 0
+        master_val = 0
+        cmd = (
+            "amixer sset 'Master' 0 >/dev/null 2>&1 && "
+            "amixer sset 'SPK Master' 0 mute >/dev/null 2>&1"
+        )
+    else:
+        master_val = int(round(clamped * 25.5))
+        if master_val > 255:
+            master_val = 255
+        spk_val = SPK_VOL_MAP[clamped]
+        cmd = (
+            f"amixer sset 'Master' {master_val} >/dev/null 2>&1 && "
+            f"amixer sset 'SPK Master' {spk_val} unmute >/dev/null 2>&1"
+        )
     try:
         subprocess.run(
             [
@@ -286,7 +296,7 @@ def set_station_volume(lvl: int) -> int:
     except Exception:
         pass
 
-    # Индикация уровня громкости на дисплее Станции (напр. U 70)
+    # Индикация уровня громкости на дисплее Станции (напр. U  0, U 70)
     try:
         from .display_tools import show_display_volume
         show_display_volume(clamped * 10)
@@ -316,18 +326,36 @@ def _try_handle_volume_command(t: str, t_lower: str) -> str | None:
             cur = get_mac_volume()
             return f"Сейчас громкость на компьютере {cur} процентов."
         cur = get_station_volume()
+        if cur == 0:
+            return "Сейчас звук на колонке выключен."
         return f"Сейчас громкость колонки {cur} из десяти."
 
-    # 2. Выключить звук («выключи звук»)
-    if any(w in t_lower for w in ("выключи звук", "отключи звук", "без звука", "убери звук")):
+    # 2. Выключить звук («выключи звук», «без звука», «звук на ноль»)
+    if any(
+        w in t_lower
+        for w in (
+            "выключи звук",
+            "отключи звук",
+            "без звука",
+            "убери звук",
+            "заглуши звук",
+            "выключи громкость",
+            "звук на ноль",
+            "звук на 0",
+            "громкость на ноль",
+            "громкость на 0",
+            "громкость ноль",
+            "громкость 0",
+        )
+    ):
         if is_mac_target:
             set_mac_mute(True)
             return "Выключила звук на компьютере."
-        set_station_volume(1)
-        return "Убавила звук на колонке до минимума."
+        set_station_volume(0)
+        return "Выключила звук на колонке."
 
     # 3. Включить звук
-    if any(w in t_lower for w in ("включи звук", "верни звук")):
+    if any(w in t_lower for w in ("включи звук", "верни звук", "вруби звук")):
         if is_mac_target:
             set_mac_mute(False)
             return "Включила звук на компьютере."
@@ -346,6 +374,8 @@ def _try_handle_volume_command(t: str, t_lower: str) -> str | None:
         cur = get_station_volume()
         step = target_num if (target_num is not None and target_num <= 4) else 1
         new_v = set_station_volume(cur - step)
+        if new_v == 0:
+            return "Сделала тише — звук выключен."
         return f"Сделала тише — громкость {new_v}."
 
     # 5. Сделай громче
@@ -360,7 +390,7 @@ def _try_handle_volume_command(t: str, t_lower: str) -> str | None:
         new_v = set_station_volume(cur + step)
         return f"Сделала громче — громкость {new_v}."
 
-    # 6. Установка конкретной громкости («громкость 5», «поставь громкость на 7», «звук 40%»)
+    # 6. Установка конкретной громкости («громкость 0», «громкость 5», «поставь громкость на 7», «звук 40%»)
     if target_num is not None and any(w in t_lower for w in ("громкост", "звук", "процент", "%", "на ")):
         if is_mac_target:
             new_v = set_mac_volume(target_num)
@@ -369,6 +399,8 @@ def _try_handle_volume_command(t: str, t_lower: str) -> str | None:
         if target_lvl > 10:
             target_lvl = int(round(target_lvl / 10.0))
         new_v = set_station_volume(target_lvl)
+        if new_v == 0:
+            return "Выключила звук на колонке."
         return f"Установила громкость колонки на {new_v}."
 
     return None
