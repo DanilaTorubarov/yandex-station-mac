@@ -311,8 +311,9 @@ static int get_spk_volume(void) {
 }
 
 static int spk_to_level(int spk) {
-    int best = 1, best_diff = 1024;
-    for (int i = 1; i <= 10; ++i) {
+    if (spk <= 0) return 0;
+    int best = 0, best_diff = 1024;
+    for (int i = 0; i <= 10; ++i) {
         int d = spk - SPK_VOL_MAP[i];
         if (d < 0) d = -d;
         if (d < best_diff) {
@@ -331,18 +332,22 @@ static void sync_hardware_volume(void) {
     int spk = read_mixer_value("SPK Master");
     int lvl = (spk >= 0) ? spk_to_level(spk) : 5;
     g_cur_vol_level = lvl;
-    int master_val = lvl * 25;
-    if (master_val > 255) master_val = 255;
-    char cmd[96];
-    snprintf(cmd, sizeof(cmd), "amixer sset 'Master' %d >/dev/null 2>&1", master_val);
-    if (system(cmd) < 0) {}
+    if (lvl == 0) {
+        if (system("amixer sset 'Master' 0 >/dev/null 2>&1; amixer sset 'SPK Master' 0 mute >/dev/null 2>&1") < 0) {}
+    } else {
+        int master_val = lvl * 25;
+        if (master_val > 255) master_val = 255;
+        char cmd[96];
+        snprintf(cmd, sizeof(cmd), "amixer sset 'Master' %d >/dev/null 2>&1", master_val);
+        if (system(cmd) < 0) {}
+    }
 }
 
 static void play_wav_async(const char *wav_path) {
     stop_async_audio();
     if (access(wav_path, R_OK) != 0) return;
     int vol = get_spk_volume();
-    if (vol <= 0) return;
+    if (vol <= 0 || g_cur_vol_level == 0) return;
 
     pid_t pid = fork();
     if (pid == 0) {
@@ -362,7 +367,7 @@ static void play_wav_async(const char *wav_path) {
 static void adjust_station_volume(int delta) {
     int spk = get_spk_volume();
     int hw_lvl = spk_to_level(spk);
-    int lvl = (g_cur_vol_level >= 1 && g_cur_vol_level <= 10) ? g_cur_vol_level : hw_lvl;
+    int lvl = (g_cur_vol_level >= 0 && g_cur_vol_level <= 10) ? g_cur_vol_level : hw_lvl;
     /* Если громкость заметно изменили снаружи (с Мака по AirPlay), отталкиваемся от SPK Master */
     int expected_spk = SPK_VOL_MAP[lvl];
     int diff = spk - expected_spk;
@@ -372,7 +377,7 @@ static void adjust_station_volume(int delta) {
     }
     lvl += delta;
     if (lvl > 10) lvl = 10;
-    if (lvl < 1) lvl = 1;
+    if (lvl < 0) lvl = 0;
     g_cur_vol_level = lvl;
 
     int new_spk = SPK_VOL_MAP[lvl];
@@ -381,17 +386,25 @@ static void adjust_station_volume(int delta) {
     fprintf(stderr, "[touch-assistant] Громкость: delta=%d -> уровень=%d (SPK=%d, Master=%d)\n",
             delta, lvl, new_spk, master_val);
     char cmd[160];
-    snprintf(cmd, sizeof(cmd),
-             "amixer sset 'SPK Master' %d >/dev/null 2>&1; "
-             "amixer sset 'Master' %d >/dev/null 2>&1",
-             new_spk, master_val);
+    if (lvl == 0) {
+        snprintf(cmd, sizeof(cmd),
+                 "amixer sset 'Master' 0 >/dev/null 2>&1; "
+                 "amixer sset 'SPK Master' 0 mute >/dev/null 2>&1");
+    } else {
+        snprintf(cmd, sizeof(cmd),
+                 "amixer sset 'SPK Master' %d unmute >/dev/null 2>&1; "
+                 "amixer sset 'Master' %d >/dev/null 2>&1",
+                 new_spk, master_val);
+    }
     if (system(cmd) < 0) {}
     char notify_cmd[512];
     snprintf(notify_cmd, sizeof(notify_cmd),
              "/opt/bin/curl -sS -m 2 -X POST '%s/music/volume?level=%d' >/dev/null 2>&1 &",
              g_server_url, lvl);
     if (system(notify_cmd) < 0) {}
-    play_wav_async("/data/mictap/vol_click.wav");
+    if (lvl > 0) {
+        play_wav_async("/data/mictap/vol_click.wav");
+    }
 }
 
 static void prebuf_push(const uint8_t *data, size_t len) {
@@ -1040,7 +1053,7 @@ int main(void) {
             sync_hardware_volume();
             ensure_alsa_free();
 
-            if (vol > 0) {
+            if (vol > 0 && g_cur_vol_level != 0) {
                 pid_t aplay_pid = fork();
                 if (aplay_pid == 0) {
                     int devnull = open("/dev/null", O_RDWR);
