@@ -462,9 +462,32 @@ def try_handle_timer_command(
         return None
     t_lower = t.lower()
 
-    has_keyword = any(
-        w in t_lower
-        for w in ("таймер", "будильник", "напомни", "напоминан", "разбуди", "засеки")
+    has_keyword = (
+        any(
+            w in t_lower
+            for w in (
+                "таймер",
+                "даймер",
+                "теймер",
+                "таймир",
+                "таймр",
+                "таймеры",
+                "будильник",
+                "будильники",
+                "напомни",
+                "напоминан",
+                "разбуди",
+                "засеки",
+                "отсчет",
+                "отсчёт",
+            )
+        )
+        or bool(
+            re.search(
+                r"\b(?:поставь|включи|запусти|сделай)\b.*\bна\s+[0-9а-яё\s]+(?:минут|секунд|час)",
+                t_lower,
+            )
+        )
     )
     if not has_keyword:
         return None
@@ -472,7 +495,7 @@ def try_handle_timer_command(
     # 1. Отмена таймеров / будильников / напоминаний
     if any(
         w in t_lower
-        for w in ("отмени", "удали", "выключи", "останови", "сбрось", "убери")
+        for w in ("отмени", "удали", "выключи", "останови", "сбрось", "убери", "выруби")
     ) and not any(w in t_lower for w in ("через ", "духовк", "плит", "утюг", "чайник", "свет", "комп")):
         with _LOCK:
             if not _ACTIVE_ITEMS:
@@ -548,8 +571,11 @@ def try_handle_timer_command(
             _schedule_item("alarm", dur_str, float(dur_sec), alert, tts_speak_fn)
             return f"Поставила будильник, разбужу вас через {dur_str}."
 
-    # 5. Таймер («поставь таймер на 10 минут», «засеки 30 секунд»)
-    if any(w in t_lower for w in ("таймер", "засеки")):
+    # 5. Таймер («поставь таймер на 10 минут», «засеки 30 секунд», «даймер на одну минуту», «поставь на минуту»)
+    if (
+        any(w in t_lower for w in ("таймер", "даймер", "теймер", "таймир", "таймр", "засеки", "отсчет", "отсчёт"))
+        or bool(re.search(r"\b(?:поставь|включи|запусти|сделай)\b.*\bна\s+[0-9а-яё\s]+(?:минут|секунд|час)", t_lower))
+    ):
         dur_sec = _parse_duration_seconds(t_lower)
         if dur_sec is not None:
             dur_str = _format_duration_ru(dur_sec)
@@ -557,5 +583,7 @@ def try_handle_timer_command(
             _schedule_item("timer", dur_str, float(dur_sec), alert, tts_speak_fn)
             _start_station_timer_display(int(dur_sec))
             return f"Поставила таймер на {dur_str}."
+        if any(w in t_lower for w in ("таймер", "даймер", "теймер")):
+            return "На сколько поставить таймер?"
 
     return None
