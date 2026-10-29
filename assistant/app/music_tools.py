@@ -62,9 +62,10 @@ _PLAYLIST_ALIASES: dict[str, str] = {
 }
 
 
-def _build_jxa_play(target_playlist: str = "", resume_only: bool = False) -> str:
+def _build_jxa_play(target_playlist: str = "", resume_only: bool = False, target_device: str = "") -> str:
     pl_json = json.dumps(target_playlist)
     resume_js = "true" if resume_only else "false"
+    device_json = json.dumps(target_device)
     return f"""
 (function() {{
     var music = Application("Music");
@@ -73,11 +74,39 @@ def _build_jxa_play(target_playlist: str = "", resume_only: bool = False) -> str
         delay(0.8);
     }}
 
-    // 1. Подключаем Яндекс Станцию Мини 2 по AirPlay
+    // 1. Управление аудиоустройствами AirPlay (Яндекс Станция / Наушники / Компьютер)
+    var reqDevice = {device_json};
+    var stationName = "{STATION_AIRPLAY_NAME}";
     try {{
-        var devs = music.airplayDevices.whose({{name: "{STATION_AIRPLAY_NAME}"}});
-        if (devs.length > 0) {{
-            devs[0].selected = true;
+        var devs = music.airplayDevices();
+        var hasBT = false;
+        for (var i = 0; i < devs.length; i++) {{
+            if (devs[i].kind() === "Bluetooth device") {{
+                hasBT = true;
+                break;
+            }}
+        }}
+
+        // Если явно запрошена колонка, ИЛИ если наушники сняты/не подключены (и не запрошены наушники):
+        var wantStation = (reqDevice === "station") || (!hasBT && reqDevice !== "headphones");
+
+        for (var i = 0; i < devs.length; i++) {{
+            var d = devs[i];
+            var dName = d.name();
+            var dKind = d.kind();
+            if (wantStation) {{
+                if (dName === stationName) {{
+                    d.selected = true;
+                }} else if (dKind === "computer" || dKind === "Bluetooth device") {{
+                    try {{ d.selected = false; }} catch (e) {{}}
+                }}
+            }} else if (reqDevice === "headphones") {{
+                if (dKind === "Bluetooth device" || dKind === "computer") {{
+                    d.selected = true;
+                }} else if (dName === stationName) {{
+                    try {{ d.selected = false; }} catch (e) {{}}
+                }}
+            }}
         }}
     }} catch (e) {{}}
 
@@ -106,6 +135,13 @@ def _build_jxa_play(target_playlist: str = "", resume_only: bool = False) -> str
         st = music.playerState();
     }} catch (e) {{}}
 
+    var canResumeTrack = false;
+    try {{
+        if (st === "paused" || (st === "stopped" && music.currentTrack.name() != null)) {{
+            canResumeTrack = true;
+        }}
+    }} catch (e) {{}}
+
     if (requested && requested.indexOf("music://") === 0) {{
         music.openLocation(requested);
         delay(1.5);
@@ -120,7 +156,10 @@ def _build_jxa_play(target_playlist: str = "", resume_only: bool = False) -> str
             music.openLocation("{PERSONAL_STATION_URL}");
         }}
         delay(0.5);
-    }} else if (resumeOnly && st === "paused") {{
+    }} else if (resumeOnly && canResumeTrack) {{
+        music.play();
+        delay(0.4);
+    }} else if (canResumeTrack && !requested) {{
         music.play();
         delay(0.4);
     }} else {{
@@ -311,9 +350,14 @@ def _run_applescript_control(mode: str, step_sec: int = 20, timeout: float = 6.0
         return {"ok": False, "error": str(exc)}
 
 
-def play_apple_music(playlist: str = "", resume_only: bool = False) -> dict[str, Any]:
-    """Открывает Apple Music, подключает Яндекс Станцию по AirPlay и запускает личную радиостанцию (или плейлист)."""
-    return _run_jxa(_build_jxa_play(playlist, resume_only=resume_only), timeout=10.0)
+def play_apple_music(playlist: str = "", resume_only: bool = False, target_device: str = "") -> dict[str, Any]:
+    """Открывает Apple Music, выбирает вывод (Яндекс Станция / наушники) и запускает воспроизведение."""
+    return _run_jxa(_build_jxa_play(playlist, resume_only=resume_only, target_device=target_device), timeout=10.0)
+
+
+def switch_apple_music_output(target_device: str = "station") -> dict[str, Any]:
+    """Переключает вывод воспроизведения Apple Music между колонкой и наушниками."""
+    return play_apple_music(resume_only=True, target_device=target_device)
 
 
 def pause_apple_music() -> dict[str, Any]:
@@ -592,6 +636,59 @@ def try_handle_music_command(text: str) -> str | None:
         threading.Thread(target=play_apple_music, kwargs={"resume_only": True}, daemon=True).start()
         return "Продолжаю воспроизведение."
 
+    # 4a. Переключение вывода на Яндекс Станцию («переключи на колонку», «музыку на колонку», «играй на колонке», «на станцию»)
+    if any(
+        p in t_low
+        for p in (
+            "на колонку",
+            "на колонке",
+            "на станцию",
+            "на станции",
+            "музыку на колонку",
+            "музыку на станцию",
+            "звук на колонку",
+            "звук на станцию",
+            "играй на колонке",
+            "играй на станции",
+            "включи на колонке",
+            "включи на станции",
+            "переключи на колонку",
+            "переключи на станцию",
+            "переведи на колонку",
+            "переведи на станцию",
+            "продолжи на колонке",
+            "продолжи на станции",
+        )
+    ) and not any(w in t_low for w in ("громк", "тиш", "звук на 50", "процент", "секунд", "минут")):
+        log.info("Команда переключения музыки на колонку: '%s'", t)
+        threading.Thread(target=play_apple_music, kwargs={"target_device": "station", "resume_only": True}, daemon=True).start()
+        return "Переключила музыку на колонку."
+
+    # 4b. Переключение вывода на наушники («переключи в наушники», «музыку в наушники», «играй в наушниках», «в уши»)
+    if any(
+        p in t_low
+        for p in (
+            "в наушники",
+            "в наушниках",
+            "в уши",
+            "в ушах",
+            "музыку в наушники",
+            "музыку в уши",
+            "звук в наушники",
+            "звук в уши",
+            "играй в наушниках",
+            "включи в наушниках",
+            "переключи на наушники",
+            "переключи в наушники",
+            "переведи на наушники",
+            "переведи в наушники",
+            "продолжи в наушниках",
+        )
+    ):
+        log.info("Команда переключения музыки в наушники: '%s'", t)
+        threading.Thread(target=play_apple_music, kwargs={"target_device": "headphones", "resume_only": True}, daemon=True).start()
+        return "Переключила музыку в наушники."
+
     # 5. Вопрос «что сейчас играет?»
     if _MUSIC_WHAT_RE.search(t_low):
         log.info("Команда что играет: '%s'", t)
@@ -670,10 +767,95 @@ def try_handle_music_command(text: str) -> str | None:
         or ("apple music" in t_low or "эпл мюзик" in t_low or "эпл мьюзик" in t_low or "эплмьюзик" in t_low)
     ):
         target, label = _extract_target_music(t_low)
-        log.info("Команда запуска Apple Music (target='%s', label='%s'): '%s'", target, label, t)
-        threading.Thread(target=play_apple_music, args=(target, False), daemon=True).start()
+        want_station = any(w in t_low for w in ("на колонке", "на колонку", "на станции", "на станцию"))
+        want_headphones = any(w in t_low for w in ("в наушниках", "в наушники", "в ушах", "в уши"))
+        target_device = "station" if want_station else ("headphones" if want_headphones else "")
+
+        log.info("Команда запуска Apple Music (target='%s', label='%s', device='%s'): '%s'", target, label, target_device, t)
+        threading.Thread(target=play_apple_music, args=(target, False), kwargs={"target_device": target_device}, daemon=True).start()
+        dest_str = " на колонке" if want_station else (" в наушниках" if want_headphones else "")
         if label:
-            return f"Включаю {label} в Apple Music."
-        return "Включаю вашу станцию в Apple Music."
+            return f"Включаю {label}{dest_str} в Apple Music."
+        return f"Включаю вашу станцию{dest_str} в Apple Music."
 
     return None
+
+
+# --- Автоматический handoff наушники -> Яндекс Станция -----------------------
+
+_HANDOFF_RUNNING = False
+
+
+def _headphone_handoff_loop() -> None:
+    """
+    Фоновый наблюдатель: если в Bluetooth-наушниках играла музыка, и пользователь снял
+    их (наушники отключились или воспроизведение встало на паузу при снятии с ушей),
+    автоматически переключает вывод звука на Яндекс Станцию Мини 2 и продолжает трек.
+    """
+    log.info("Запущен фоновый мониторинг наушников для автопереключения на Яндекс Станцию")
+    was_playing_on_headphones = False
+
+    while True:
+        try:
+            time.sleep(2.0)
+            res = _run_jxa("""
+            (function() {
+                var music = Application("Music");
+                if (!music.running()) return JSON.stringify({running: false});
+                var st = music.playerState();
+                var devs = music.airplayDevices();
+                var btSelected = false;
+                var btCount = 0;
+                for (var i = 0; i < devs.length; i++) {
+                    if (devs[i].kind() === "Bluetooth device") {
+                        btCount++;
+                        if (devs[i].selected()) btSelected = true;
+                    }
+                }
+                return JSON.stringify({
+                    running: true,
+                    state: st,
+                    btSelected: btSelected,
+                    btCount: btCount
+                });
+            })();
+            """, timeout=4.0)
+
+            if not res or not res.get("running"):
+                was_playing_on_headphones = False
+                continue
+
+            state = res.get("state")
+            bt_selected = res.get("btSelected", False)
+            bt_count = res.get("btCount", 0)
+
+            # Если музыка играет в Bluetooth-наушниках
+            if state == "playing" and (bt_selected or bt_count > 0):
+                was_playing_on_headphones = True
+                continue
+
+            # Если музыка только что играла в наушниках, но наушники сняли/отключились:
+            if was_playing_on_headphones and (state in ("paused", "stopped") or bt_count == 0):
+                log.info("Наушники сняты или отключены -> автопереключение музыки на Яндекс Станцию")
+                was_playing_on_headphones = False
+                # Переключаем вывод на Яндекс Станцию и продолжаем трек
+                play_apple_music(resume_only=True, target_device="station")
+                time.sleep(1.0)
+                continue
+
+            if state != "playing":
+                was_playing_on_headphones = False
+
+        except Exception as exc:
+            log.debug("Ошибка в headphone_handoff_loop: %s", exc)
+            time.sleep(3.0)
+
+
+def start_headphone_handoff_monitor() -> None:
+    """Запускает фоновый поток авто-передачи звука на колонку при снятии наушников."""
+    global _HANDOFF_RUNNING
+    if _HANDOFF_RUNNING:
+        return
+    _HANDOFF_RUNNING = True
+    t = threading.Thread(target=_headphone_handoff_loop, daemon=True, name="headphone-handoff")
+    t.start()
