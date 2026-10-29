@@ -1843,12 +1843,16 @@ def try_handle_mac_command(text: str, llm) -> str | None:
         if site_info:
             site_url, site_label = site_info
             log.info("Команда Mac open_site: '%s' -> '%s'", target_clean, site_url)
+            from .system_tools import wake_mac_now
+            wake_mac_now()
             subprocess.run(["open", site_url], check=False, timeout=5)
             return f"Открываю {site_label} на компьютере."
 
         app_name = resolve_app(target_clean)
         if app_name:
             log.info("Команда Mac open_app: '%s' -> '%s'", target_clean, app_name)
+            from .system_tools import wake_mac_now
+            wake_mac_now()
             subprocess.run(["open", "-a", app_name], check=False, timeout=5)
             return f"Открываю {app_name} на компьютере."
 
