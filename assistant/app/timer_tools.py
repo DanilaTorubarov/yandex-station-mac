@@ -37,6 +37,8 @@ class ScheduledItem:
 _LOCK = threading.Lock()
 _NEXT_ID = 1
 _ACTIVE_ITEMS: dict[int, ScheduledItem] = {}
+_CURRENT_ALERT_PROCESS: subprocess.Popen | None = None
+_ALERT_LOCK = threading.Lock()
 
 # Числительные для распознавания длительности («на десять минут», «через полчаса», «на две минуты»)
 _WORD_TO_NUM: dict[str, int] = {
@@ -261,7 +263,7 @@ def _play_alarm_on_station_and_mac(
     # 3. Отправляем и проигрываем на Яндекс Станции по SSH через dmix_spk_plug
     remote_cmd = (
         "cat > /tmp/timer_alert.wav && "
-        "ALSA_CONFIG_PATH=/etc/alsa-mictap.conf /usr/bin/aplay -N -q -D dmix_spk_plug /tmp/timer_alert.wav; "
+        "/usr/bin/aplay -N -q -D dmix_spk_plug /tmp/timer_alert.wav; "
         "rm -f /tmp/timer_alert.wav"
     )
     try:
@@ -288,15 +290,27 @@ def _play_alarm_on_station_and_mac(
     except Exception as exc:
         log.warning("Не удалось воспроизвести таймер на колонке по SSH: %s", exc)
 
-    # Запасной вариант: проигрываем звук прямо на динамиках Mac через afplay
+    # Запасной вариант: проигрываем звук на Mac через afplay (с возможностью мгновенной остановки)
+    global _CURRENT_ALERT_PROCESS
+    tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(full_wav)
             tmp_path = f.name
-        subprocess.run(["/usr/bin/afplay", tmp_path], check=False, timeout=30)
-        os.unlink(tmp_path)
+        with _ALERT_LOCK:
+            proc = subprocess.Popen(["/usr/bin/afplay", tmp_path])
+            _CURRENT_ALERT_PROCESS = proc
+        proc.wait(timeout=30)
     except Exception:
         pass
+    finally:
+        with _ALERT_LOCK:
+            _CURRENT_ALERT_PROCESS = None
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 def _start_station_timer_display(delay_sec: int) -> None:
@@ -340,6 +354,21 @@ def stop_station_audio_and_timers() -> None:
     """Немедленно глушит любые звуки, сигналы таймера, музыку Apple Music и часы на колонке и Mac."""
     cancel_all_timers()
 
+    # 1. Мгновенно глушим локальный процесс afplay на Mac (сигнал таймера)
+    global _CURRENT_ALERT_PROCESS
+    with _ALERT_LOCK:
+        if _CURRENT_ALERT_PROCESS is not None:
+            try:
+                _CURRENT_ALERT_PROCESS.terminate()
+                _CURRENT_ALERT_PROCESS.kill()
+            except Exception:
+                pass
+            _CURRENT_ALERT_PROCESS = None
+    try:
+        subprocess.run(["killall", "-9", "afplay"], capture_output=True, timeout=1)
+    except Exception:
+        pass
+
     def _run() -> None:
         try:
             from .music_tools import pause_apple_music
@@ -349,11 +378,8 @@ def stop_station_audio_and_timers() -> None:
             pass
 
         try:
-            # Останавливаем любые aplay и таймер-часы на колонке
-            cmd = (
-                "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
-                "/data/mictap/timer-clock.sh stop >/dev/null 2>&1"
-            )
+            # Останавливаем aplay и таймер-часы на колонке
+            cmd = "killall -9 aplay >/dev/null 2>&1; /data/mictap/timer-clock.sh stop >/dev/null 2>&1"
             subprocess.run(
                 [
                     "ssh",
@@ -367,15 +393,10 @@ def stop_station_audio_and_timers() -> None:
                     cmd,
                 ],
                 capture_output=True,
-                timeout=5,
+                timeout=4,
             )
         except Exception as exc:
             log.warning("Не удалось отправить команду остановки на колонку: %s", exc)
-
-        try:
-            subprocess.run(["pkill", "-15", "-f", "afplay.*timer"], capture_output=True, timeout=2)
-        except Exception:
-            pass
 
     threading.Thread(target=_run, daemon=True).start()
 
