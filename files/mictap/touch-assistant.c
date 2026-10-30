@@ -694,6 +694,11 @@ static int run_interruptible_pid(pid_t child_pid, int touch_fd, int vqe_fd, int 
                 fprintf(stderr, "[touch-assistant] Остановка по голосовой команде (%s)!\n",
                         stop ? "Стоп" : "Алиса");
                 stop_pid_gracefully(child_pid);
+                if (stop) {
+                    char stop_cmd[256];
+                    snprintf(stop_cmd, sizeof(stop_cmd), "/opt/bin/curl -sS -m 3 -X POST %s/stop >/dev/null 2>&1 &", g_server_url);
+                    system(stop_cmd);
+                }
                 if (wake) {
                     return -2;
                 }
@@ -917,7 +922,7 @@ int main(void) {
                     snprintf(stop_cmd, sizeof(stop_cmd),
                              "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
                              "/data/mictap/timer-clock.sh stop >/dev/null 2>&1; "
-                             "/opt/bin/curl -sS -m 3 -X POST %s/music/pause >/dev/null 2>&1 &", server_url);
+                             "/opt/bin/curl -sS -m 3 -X POST %s/stop >/dev/null 2>&1 &", server_url);
                     system(stop_cmd);
                     stop_async_audio();
                     stop_led();
@@ -933,7 +938,13 @@ int main(void) {
                             btn_down_ms = now_ms();
                         } else if (ev.value == 0) {
                             if (btn_is_down && (now_ms() - btn_down_ms) < LONG_PRESS_MS) {
-                                fprintf(stderr, "[touch-assistant] Короткое нажатие в покое.\n");
+                                fprintf(stderr, "[touch-assistant] Короткое нажатие в покое: глушим таймеры и звук.\n");
+                                char stop_cmd[256];
+                                snprintf(stop_cmd, sizeof(stop_cmd),
+                                         "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
+                                         "/data/mictap/timer-clock.sh stop >/dev/null 2>&1; "
+                                         "/opt/bin/curl -sS -m 3 -X POST %s/stop >/dev/null 2>&1 &", server_url);
+                                system(stop_cmd);
                                 stop_async_audio();
                                 stop_led();
                             }

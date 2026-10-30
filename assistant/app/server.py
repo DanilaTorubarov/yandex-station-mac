@@ -333,6 +333,15 @@ def reset() -> dict:
     return {"ok": True}
 
 
+@app.post("/stop")
+def stop_all() -> dict:
+    from .timer_tools import stop_station_audio_and_timers
+    from .music_tools import pause_apple_music
+    stop_station_audio_and_timers()
+    pause_apple_music()
+    return {"ok": True, "status": "stopped"}
+
+
 @app.post("/music/play")
 def music_play() -> dict:
     from .music_tools import play_apple_music
@@ -341,7 +350,9 @@ def music_play() -> dict:
 
 @app.post("/music/pause")
 def music_pause() -> dict:
+    from .timer_tools import stop_station_audio_and_timers
     from .music_tools import pause_apple_music
+    stop_station_audio_and_timers()
     return pause_apple_music()
 
 

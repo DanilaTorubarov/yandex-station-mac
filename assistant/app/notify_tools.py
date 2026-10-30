@@ -180,6 +180,23 @@ def parse_calendar_notification(texts: list[str]) -> str | None:
     combined = " | ".join(texts)
     low = combined.lower()
 
+    # Игнорируем системные таймеры, будильники и служебные уведомления
+    if any(
+        w in low
+        for w in (
+            "таймер",
+            "timer",
+            "будильник",
+            "alarm",
+            "секундомер",
+            "stopwatch",
+            "скачиван",
+            "загрузк",
+            "download",
+        )
+    ):
+        return None
+
     # Проверяем маркеры календаря / событий / расписания
     is_calendar = any(
         w in low

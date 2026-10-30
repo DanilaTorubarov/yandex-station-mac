@@ -39,6 +39,7 @@ _NEXT_ID = 1
 _ACTIVE_ITEMS: dict[int, ScheduledItem] = {}
 _CURRENT_ALERT_PROCESS: subprocess.Popen | None = None
 _ALERT_LOCK = threading.Lock()
+_STOP_REQUESTED_TS: float = 0.0
 
 # Числительные для распознавания длительности («на десять минут», «через полчаса», «на две минуты»)
 _WORD_TO_NUM: dict[str, int] = {
@@ -230,16 +231,22 @@ def _play_alarm_on_station_and_mac(
 ) -> None:
     """
     Синтезирует голосовое оповещение, склеивает его с мелодией колокольчиков и
-    проигрывает на Яндекс Станции (192.168.2.83:2222) + показывает уведомление на Mac.
+    проигрывает на Яндекс Станции (192.168.2.83:2222) + показывает тихое баннер-уведомление на Mac.
     """
-    # 1. Показываем системное уведомление на Mac
+    global _CURRENT_ALERT_PROCESS, _STOP_REQUESTED_TS
+
+    if time.time() - _STOP_REQUESTED_TS < 5.0:
+        log.info("Воспроизведение таймера отменено: недавно была команда Стоп")
+        return
+
+    # 1. Показываем визуальное системное уведомление на Mac (без звука в наушники)
     esc_text = spoken_text.replace('"', '\\"')
     esc_title = title.replace('"', '\\"')
     subprocess.run(
         [
             "osascript",
             "-e",
-            f'display notification "{esc_text}" with title "{esc_title}" sound name "Glass"',
+            f'display notification "{esc_text}" with title "{esc_title}"',
         ],
         capture_output=True,
         text=True,
@@ -260,12 +267,16 @@ def _play_alarm_on_station_and_mac(
         log.warning("Ошибка синтеза сигнала таймера: %s", exc)
         return
 
+    if time.time() - _STOP_REQUESTED_TS < 5.0:
+        return
+
     # 3. Отправляем и проигрываем на Яндекс Станции по SSH через dmix_spk_plug
     remote_cmd = (
         "cat > /tmp/timer_alert.wav && "
         "/usr/bin/aplay -N -q -D dmix_spk_plug /tmp/timer_alert.wav; "
-        "rm -f /tmp/timer_alert.wav"
+        "res=$?; rm -f /tmp/timer_alert.wav; exit $res"
     )
+    ssh_connected = False
     try:
         res = subprocess.run(
             [
@@ -283,21 +294,30 @@ def _play_alarm_on_station_and_mac(
             capture_output=True,
             timeout=35,
         )
+        ssh_connected = True
         if res.returncode == 0:
             log.info("Сигнал таймера успешно проигран на колонке: '%s'", spoken_text)
+            return
+        if res.returncode in (143, 137, 15, 9, -15, -9) or (time.time() - _STOP_REQUESTED_TS < 10.0):
+            log.info("Сигнал таймера на колонке был остановлен командой Стоп (rc=%s)", res.returncode)
             return
         log.warning("SSH aplay на колонке вернул %s: %s", res.returncode, res.stderr.decode("utf-8", errors="ignore"))
     except Exception as exc:
         log.warning("Не удалось воспроизвести таймер на колонке по SSH: %s", exc)
 
-    # Запасной вариант: проигрываем звук на Mac через afplay (с возможностью мгновенной остановки)
-    global _CURRENT_ALERT_PROCESS
+    # Запасной вариант: проигрываем звук на Mac через afplay ТОЛЬКО если колонка вообще недоступна по сети
+    # и если не было команды остановки
+    if ssh_connected or (time.time() - _STOP_REQUESTED_TS < 10.0):
+        return
+
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             f.write(full_wav)
             tmp_path = f.name
         with _ALERT_LOCK:
+            if time.time() - _STOP_REQUESTED_TS < 10.0:
+                return
             proc = subprocess.Popen(["/usr/bin/afplay", tmp_path])
             _CURRENT_ALERT_PROCESS = proc
         proc.wait(timeout=30)
@@ -352,10 +372,12 @@ def cancel_all_timers() -> int:
 
 def stop_station_audio_and_timers() -> None:
     """Немедленно глушит любые звуки, сигналы таймера, музыку Apple Music и часы на колонке и Mac."""
+    global _CURRENT_ALERT_PROCESS, _STOP_REQUESTED_TS
+    _STOP_REQUESTED_TS = time.time()
+    log.info("Получена команда немедленной остановки (Стоп): глушим таймеры, afplay, aplay и музыку")
     cancel_all_timers()
 
     # 1. Мгновенно глушим локальный процесс afplay на Mac (сигнал таймера)
-    global _CURRENT_ALERT_PROCESS
     with _ALERT_LOCK:
         if _CURRENT_ALERT_PROCESS is not None:
             try:
