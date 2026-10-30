@@ -40,8 +40,6 @@ static int sock_fd = -1;
 static int initialized = 0;
 static uint64_t last_wake_ms = 0;
 static uint64_t last_stop_ms = 0;
-static uint64_t last_play_ms = 0;
-static uint64_t last_next_ms = 0;
 static uint64_t last_volup_ms = 0;
 static uint64_t last_voldown_ms = 0;
 
@@ -141,18 +139,6 @@ static void handle_spotter_hit(void *spotter, int ev, const char *src) {
             last_stop_ms = t;
             notify_spotter("STOP");
             log_msg("[mictap] -> sent STOP to touch-assistant\n");
-        }
-    } else if (strstr(phrase, "играй") || strstr(phrase, "продолжи")) {
-        if (t - last_play_ms >= 1200) {
-            last_play_ms = t;
-            notify_spotter("PLAY");
-            log_msg("[mictap] -> sent PLAY to touch-assistant\n");
-        }
-    } else if (strstr(phrase, "следующий") || strstr(phrase, "дальше")) {
-        if (t - last_next_ms >= 1200) {
-            last_next_ms = t;
-            notify_spotter("NEXT");
-            log_msg("[mictap] -> sent NEXT to touch-assistant\n");
         }
     } else if (strstr(phrase, "громче") || strstr(phrase, "выше")) {
         if (t - last_volup_ms >= 500) {

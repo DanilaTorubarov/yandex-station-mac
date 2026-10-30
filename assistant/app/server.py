@@ -95,8 +95,6 @@ async def lifespan(app: FastAPI):
     )
     assistant = Assistant(settings)
     sync_task = asyncio.create_task(_station_ip_sync_loop())
-    from .music_tools import start_headphone_handoff_monitor
-    start_headphone_handoff_monitor()
     if settings.llm_provider != "ollama":
         try:
             httpx.post(

@@ -695,7 +695,7 @@ static int run_interruptible_pid(pid_t child_pid, int touch_fd, int vqe_fd, int 
                         stop ? "Стоп" : "Алиса");
                 stop_pid_gracefully(child_pid);
                 if (stop) {
-                    char stop_cmd[256];
+                    char stop_cmd[512];
                     snprintf(stop_cmd, sizeof(stop_cmd), "/opt/bin/curl -sS -m 3 -X POST %s/stop >/dev/null 2>&1 &", g_server_url);
                     system(stop_cmd);
                 }
@@ -904,21 +904,9 @@ int main(void) {
                     adjust_station_volume(-1);
                 } else if (wake) {
                     trigger = TRIGGER_WAKEWORD;
-                } else if (play) {
-                    fprintf(stderr, "[touch-assistant] Прямая команда «играй» -> запуск Apple Music\n");
-                    play_wav_async("/data/mictap/chime.wav");
-                    char play_cmd[256];
-                    snprintf(play_cmd, sizeof(play_cmd), "/opt/bin/curl -sS -m 5 -X POST %s/music/play >/dev/null 2>&1 &", server_url);
-                    system(play_cmd);
-                } else if (next) {
-                    fprintf(stderr, "[touch-assistant] Прямая команда «следующий» -> переключение Apple Music\n");
-                    play_wav_async("/data/mictap/vol_click.wav");
-                    char next_cmd[256];
-                    snprintf(next_cmd, sizeof(next_cmd), "/opt/bin/curl -sS -m 5 -X POST %s/music/next >/dev/null 2>&1 &", server_url);
-                    system(next_cmd);
                 } else if (stop) {
                     fprintf(stderr, "[touch-assistant] Прямая команда «стоп» -> остановка таймеров и музыки\n");
-                    char stop_cmd[256];
+                    char stop_cmd[512];
                     snprintf(stop_cmd, sizeof(stop_cmd),
                              "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
                              "/data/mictap/timer-clock.sh stop >/dev/null 2>&1; "

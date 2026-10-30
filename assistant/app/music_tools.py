@@ -853,10 +853,5 @@ def _headphone_handoff_loop() -> None:
 
 
 def start_headphone_handoff_monitor() -> None:
-    """Запускает фоновый поток авто-передачи звука на колонку при снятии наушников."""
-    global _HANDOFF_RUNNING
-    if _HANDOFF_RUNNING:
-        return
-    _HANDOFF_RUNNING = True
-    t = threading.Thread(target=_headphone_handoff_loop, daemon=True, name="headphone-handoff")
-    t.start()
+    """Отключено: музыка никогда не должна запускаться автоматически без явной команды пользователя."""
+    return
