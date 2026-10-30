@@ -463,6 +463,8 @@ class Assistant:
 
     def speak(self, text: str) -> tuple[bytes, int]:
         samples, rate = self._call("TTS", self.tts, self.tts_fallback, "synth", text)
+        # Комфортная мягкая громкость речи Алисы (-5 dB, 0.58) — не кричит и не оглушает
+        samples = (samples * 0.58).astype(np.float32)
         return to_wav_bytes(samples, rate), rate
 
     # --- полный цикл ------------------------------------------------------

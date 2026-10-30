@@ -48,5 +48,10 @@ case "$lvl" in
     *)  spk_val=211 ;;
 esac
 
-amixer sset "Master" "$master_val" >/dev/null 2>&1
-amixer sset "SPK Master" "$spk_val" >/dev/null 2>&1
+if [ "$lvl" -eq 0 ]; then
+    amixer sset "Master" 0 mute >/dev/null 2>&1
+    amixer sset "SPK Master" 0 mute >/dev/null 2>&1
+else
+    amixer sset "Master" "$master_val" unmute >/dev/null 2>&1
+    amixer sset "SPK Master" "$spk_val" unmute >/dev/null 2>&1
+fi

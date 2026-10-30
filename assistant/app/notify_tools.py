@@ -86,7 +86,9 @@ def play_wav_on_station(wav_bytes: bytes, fallback_mac: bool = False) -> bool:
     """
     with _PLAY_LOCK:
         remote_cmd = (
-            "cur_spk=$(amixer sget 'SPK Master' 2>/dev/null | awk '/Mono: Playback/ {print $3}'); "
+            "out=$(amixer sget 'SPK Master' 2>/dev/null); "
+            "if echo \"$out\" | grep -q '\\[off\\]'; then exit 0; fi; "
+            "cur_spk=$(echo \"$out\" | awk '/Mono: Playback/ {print $3}'); "
             "if [ \"$cur_spk\" = \"0\" ] || [ -z \"$cur_spk\" ]; then exit 0; fi; "
             "cur_master=$(amixer sget 'Master' 2>/dev/null | awk '/Mono: Playback/ {print $3}'); "
             "if [ -n \"$cur_master\" ] && [ \"$cur_master\" -gt 135 ] 2>/dev/null; then "

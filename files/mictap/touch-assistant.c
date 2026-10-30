@@ -260,7 +260,9 @@ static void ensure_alsa_free(void) {
     }
 }
 
-/* Значение микшера по имени контрола (0..255) или -1, если прочитать не удалось. */
+/* Значение микшера по имени контрола (0..255) или -1, если прочитать не удалось.
+ * Если переключатель pswitch стоит в [off] (mute), возвращает 0.
+ */
 static int read_mixer_value(const char *control) {
     char cmd[128];
     snprintf(cmd, sizeof(cmd), "amixer sget '%s' 2>/dev/null", control);
@@ -268,18 +270,22 @@ static int read_mixer_value(const char *control) {
     if (!fp) return -1;
     char line[256];
     int val = -1;
+    int is_off = 0;
     while (fgets(line, sizeof(line), fp)) {
         if (strstr(line, "Limits:")) continue;
+        if (strstr(line, "[off]")) {
+            is_off = 1;
+        }
         char *p = strstr(line, "Playback ");
         if (p) {
             int v = -1;
             if (sscanf(p, "Playback %d", &v) == 1 && v >= 0 && v <= 255) {
                 val = v;
-                break;
             }
         }
     }
     pclose(fp);
+    if (is_off) return 0;
     return val;
 }
 
@@ -388,12 +394,12 @@ static void adjust_station_volume(int delta) {
     char cmd[160];
     if (lvl == 0) {
         snprintf(cmd, sizeof(cmd),
-                 "amixer sset 'Master' 0 >/dev/null 2>&1; "
+                 "amixer sset 'Master' 0 mute >/dev/null 2>&1; "
                  "amixer sset 'SPK Master' 0 mute >/dev/null 2>&1");
     } else {
         snprintf(cmd, sizeof(cmd),
                  "amixer sset 'SPK Master' %d unmute >/dev/null 2>&1; "
-                 "amixer sset 'Master' %d >/dev/null 2>&1",
+                 "amixer sset 'Master' %d unmute >/dev/null 2>&1",
                  new_spk, master_val);
     }
     if (system(cmd) < 0) {}
@@ -1045,14 +1051,14 @@ int main(void) {
 
         struct stat st;
         if (stat(out_wav, &st) == 0 && st.st_size > 100) {
-            int vol = get_spk_volume();
-            fprintf(stderr, "[touch-assistant] Ответ Qwen (%ld байт), громкость=%d...\n",
-                    (long)st.st_size, vol);
-            const char *play_target = out_wav;
             sync_hardware_volume();
+            int vol = get_spk_volume();
+            fprintf(stderr, "[touch-assistant] Ответ Qwen (%ld байт), уровень=%d (SPK=%d)...\n",
+                    (long)st.st_size, g_cur_vol_level, vol);
+            const char *play_target = out_wav;
             ensure_alsa_free();
 
-            if (vol > 0 && g_cur_vol_level != 0) {
+            if (vol > 0 && g_cur_vol_level > 0) {
                 pid_t aplay_pid = fork();
                 if (aplay_pid == 0) {
                     int devnull = open("/dev/null", O_RDWR);
@@ -1071,6 +1077,8 @@ int main(void) {
                     pending_trigger = TRIGGER_HOLD;
                     continue;
                 }
+            } else {
+                fprintf(stderr, "[touch-assistant] Громкость на 0 (mute) — ответ не воспроизводится вслух.\n");
             }
             fprintf(stderr, "[touch-assistant] Диалог завершён.\n");
         } else {

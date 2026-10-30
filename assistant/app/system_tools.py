@@ -212,7 +212,7 @@ SPK_VOL_MAP = [
 
 
 def get_station_volume() -> int:
-    """Возвращает уровень громкости Яндекс Станции (от 0 до 10)."""
+    """Возвращает уровень громкости Яндекс Станции (от 0 до 10, 0 — без звука/mute)."""
     try:
         res = subprocess.run(
             [
@@ -224,13 +224,19 @@ def get_station_volume() -> int:
                 "-o",
                 "StrictHostKeyChecking=no",
                 f"root@{STATION_IP}",
-                "amixer sget 'SPK Master' | awk '/Mono: Playback/ {print $3}'",
+                "amixer sget 'SPK Master' 2>/dev/null",
             ],
             capture_output=True,
             text=True,
             timeout=3,
         )
-        val = int(res.stdout.strip())
+        out = res.stdout
+        if "[off]" in out:
+            return 0
+        m = re.search(r"Playback\s+(\d+)", out)
+        if not m:
+            return 5
+        val = int(m.group(1))
         if val <= 0:
             return 0
         best_lvl = 5
