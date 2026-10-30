@@ -67,8 +67,10 @@ def build_notification_wav(
     speech_wav, rate = tts_speak_fn(text)
     pcm_int16 = np.frombuffer(speech_wav[44:], dtype="<i2")
     speech_samples = pcm_int16.astype(np.float32) / 32767.0
+    # Комфортная мягкая громкость речи для уведомлений (коэффициент 0.45, около -7 dB)
+    speech_samples = speech_samples * 0.45
     if not with_chime:
-        return speech_wav, rate
+        return to_wav_bytes(speech_samples, rate), rate
 
     chime = _generate_notify_chime(rate)
     pause = np.zeros(int(rate * 0.14), dtype=np.float32)
@@ -80,14 +82,22 @@ def play_wav_on_station(wav_bytes: bytes, fallback_mac: bool = False) -> bool:
     """
     Отправляет WAV на Яндекс Станцию Мини 2 (192.168.2.83:2222), освобождает ALSA от фонового
     AirPlay/mediad при необходимости и воспроизводит через aplay -N (без блокировки).
+    Ограничивает аппаратную громкость Master, чтобы уведомление не орало на полной мощности.
     """
     with _PLAY_LOCK:
         remote_cmd = (
-            "vol=$(amixer sget 'SPK Master' 2>/dev/null | awk '/Mono: Playback/ {print $3}'); "
-            "if [ \"$vol\" = \"0\" ] || [ -z \"$vol\" ]; then exit 0; fi; "
+            "cur_spk=$(amixer sget 'SPK Master' 2>/dev/null | awk '/Mono: Playback/ {print $3}'); "
+            "if [ \"$cur_spk\" = \"0\" ] || [ -z \"$cur_spk\" ]; then exit 0; fi; "
+            "cur_master=$(amixer sget 'Master' 2>/dev/null | awk '/Mono: Playback/ {print $3}'); "
+            "if [ -n \"$cur_master\" ] && [ \"$cur_master\" -gt 135 ] 2>/dev/null; then "
+            "amixer sset 'Master' 135 >/dev/null 2>&1; "
+            "fi; "
             "cat > /tmp/mac_notify.wav && "
             "for p in $(ps -o pid,args 2>/dev/null | awk '/aplay.*mac_notify/ && !/awk/ {print $1}'); do kill -15 \"$p\" 2>/dev/null; done; "
             "/usr/bin/aplay -N -q -D dmix_spk_plug /tmp/mac_notify.wav; "
+            "if [ -n \"$cur_master\" ] && [ \"$cur_master\" -gt 135 ] 2>/dev/null; then "
+            "amixer sset 'Master' \"$cur_master\" >/dev/null 2>&1; "
+            "fi; "
             "rm -f /tmp/mac_notify.wav"
         )
         try:
@@ -167,100 +177,79 @@ _CALENDAR_SERVICE_NAMES = {
     "iphone mirroring",
     "mirroring",
     "дублирование iphone",
+    "reminders",
+    "напоминания",
 }
+
+_CALENDAR_MARKERS = {
+    "calendar",
+    "календар",
+    "google calendar",
+    "гугл календарь",
+    "calendar.google.com",
+    "расписани",
+    "напоминани",
+    "meet.google",
+    "zoom",
+    "встреч",
+    "урок",
+    "заняти",
+    "вебинар",
+}
+
+_IGNORE_MARKERS = (
+    "software update",
+    "обновление",
+    "обновлена",
+    "обновлено",
+    "macos",
+    "система",
+    "system",
+    "finder",
+    "app store",
+    "terminal",
+    "таймер",
+    "timer",
+    "будильник",
+    "alarm",
+    "секундомер",
+    "stopwatch",
+    "скачиван",
+    "загрузк",
+    "download",
+    "аккумулятор",
+    "battery",
+    "диск",
+    "disk",
+)
 
 
 def parse_calendar_notification(texts: list[str]) -> str | None:
     """
-    Распознаёт уведомления календаря (Google Calendar, Календарь macOS, iPhone Mirroring)
-    и формирует текст для озвучки на колонке:
+    Распознаёт ТОЛЬКО уведомления Google Calendar / календаря событий и формирует
+    краткий текст для озвучки на колонке:
     - Предварительное: 'У вас через 30 минут English.'
     - О начале: 'У вас English.'
     """
     combined = " | ".join(texts)
     low = combined.lower()
 
-    # Игнорируем системные таймеры, будильники и служебные уведомления
-    if any(
-        w in low
-        for w in (
-            "таймер",
-            "timer",
-            "будильник",
-            "alarm",
-            "секундомер",
-            "stopwatch",
-            "скачиван",
-            "загрузк",
-            "download",
-        )
-    ):
+    # Строго отсекаем системные обновления macOS, таймеры и сторонние служебные баннеры
+    if any(w in low for w in _IGNORE_MARKERS):
         return None
 
-    # Проверяем маркеры календаря / событий / расписания
-    is_calendar = any(
-        w in low
-        for w in (
-            "calendar",
-            "календар",
-            "расписани",
-            "встреч",
-            "событи",
-            "урок",
-            "заняти",
-            "пара",
-            "meet.google",
-            "zoom",
-        )
-    )
-
-    content_lines: list[str] = []
-    for t in texts:
-        t_strip = t.strip()
-        t_low = t_strip.lower()
-        if t_low in _CALENDAR_SERVICE_NAMES:
-            continue
-        parts = [p.strip() for p in re.split(r"[,•|·]", t_strip) if p.strip()]
-        meaningful_parts = [p for p in parts if p.lower() not in _CALENDAR_SERVICE_NAMES]
-        if meaningful_parts:
-            content_lines.append(" ".join(meaningful_parts))
-
-    if not content_lines:
+    # Обязательно должен быть маркер календаря / Google Calendar / запланированного занятия
+    if not any(w in low for w in _CALENDAR_MARKERS):
         return None
 
-    tokens: list[str] = []
-    for line in content_lines:
-        for word_seq in line.split("   "):
-            w = word_seq.strip()
-            if w and w not in tokens:
-                tokens.append(w)
-    unique_text = " ".join(tokens)
-    full_low = unique_text.lower()
-
-    if not is_calendar and not any(
-        w in full_low
-        for w in (
-            "через ",
-            "in ",
-            "минут",
-            "мин.",
-            "начинается",
-            "сейчас",
-            "встреча",
-            "урок",
-            "вебинар",
-        )
-    ):
-        return None
-
-    # Ищем время («через 30 минут», «in 30 minutes», «через 15 мин», «через час»)
+    # Ищем время события («через 30 минут», «in 30 minutes», «через 15 мин», «через 1 ч»)
     time_part: str | None = None
-    m_time_ru = re.search(r"\bчерез\s+(\d+)\s*(минут[а-я]*|мин\.?|ч(?:ас[а-я]*)?)\b", full_low)
+    m_time_ru = re.search(r"\bчерез\s+(\d+)\s*(минут[а-я]*|мин\.?|ч(?:ас[а-я]*)?)\b", low)
     if m_time_ru:
         time_part = m_time_ru.group(0).strip()
         time_part = re.sub(r"\bмин\.?\b", "минут", time_part)
     else:
-        m_time_en = re.search(r"\bin\s+(\d+)\s*(mins?|minutes?|hours?)\b", full_low)
+        m_time_en = re.search(r"\bin\s+(\d+)\s*(mins?|minutes?|hours?)\b", low)
         if m_time_en:
             num = m_time_en.group(1)
             unit = m_time_en.group(2)
@@ -269,15 +258,36 @@ def parse_calendar_notification(texts: list[str]) -> str | None:
             else:
                 time_part = f"через {num} минут"
 
-    # Очищаем название события от времени, интервалов часов и сервисных слов
-    cleaned_event = unique_text
+    # Очищаем название события от сервисных названий приложений и временных меток
+    content_lines: list[str] = []
+    for t in texts:
+        t_strip = t.strip()
+        t_low = t_strip.lower()
+        if t_low in _CALENDAR_SERVICE_NAMES:
+            continue
+        parts = [p.strip() for p in re.split(r"[,•|·\n]", t_strip) if p.strip()]
+        meaningful_parts = [p for p in parts if p.lower() not in _CALENDAR_SERVICE_NAMES]
+        if meaningful_parts:
+            content_lines.append(" ".join(meaningful_parts))
+
+    if not content_lines:
+        return None
+
+    raw_text = " ".join(content_lines)
+    # Удаляем диапазоны времени вида 15:00 - 16:00 или 15:00
+    cleaned_event = re.sub(r"\b\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?\b", "", raw_text)
+    # Удаляем фразы времени
     cleaned_event = re.sub(
         r"\bчерез\s+\d+\s*(?:минут[а-я]*|мин\.?|час[а-я]*)\b", "", cleaned_event, flags=re.IGNORECASE
     )
     cleaned_event = re.sub(
         r"\bin\s+\d+\s*(?:mins?|minutes?|hours?)\b", "", cleaned_event, flags=re.IGNORECASE
     )
-    cleaned_event = re.sub(r"\b\d{1,2}:\d{2}(?:\s*[-–—]\s*\d{1,2}:\d{2})?\b", "", cleaned_event)
+    # Удаляем слова Google Календарь
+    cleaned_event = re.sub(
+        r"\b(?:google|гугл)?\s*календар[ьяе]?\b", "", cleaned_event, flags=re.IGNORECASE
+    )
+    cleaned_event = re.sub(r"\bcalendar(?:\.google\.com)?\b", "", cleaned_event, flags=re.IGNORECASE)
     cleaned_event = re.sub(
         r"\b(?:напоминание|событие|начинается|сейчас|сегодня|запланировано|starting now|starts now|reminder)\b",
         "",
@@ -301,37 +311,16 @@ def parse_calendar_notification(texts: list[str]) -> str | None:
         return f"У вас {cleaned_event}."
 
 
-# --- Фоновый мониторинг завершённых скачиваний в ~/Downloads -----------------
-
-_TEMP_DOWNLOAD_SUFFIXES = (".crdownload", ".download", ".part", ".tmp", ".partial")
-
-
-def _humanize_filename_for_speech(filename: str) -> str:
-    stem = Path(filename).stem
-    ext = Path(filename).suffix.lstrip(".").lower()
-    # Оставляем только читаемые слова/цифры, обрезаем длинные хэши
-    clean_stem = re.sub(r"[_\-]+", " ", stem)
-    clean_stem = re.sub(r"\b[0-9a-f]{12,}\b", "", clean_stem, flags=re.IGNORECASE)
-    clean_stem = " ".join(clean_stem.split())[:45].strip()
-    if not clean_stem:
-        return f"файл {ext}" if ext else "новый файл"
-    return clean_stem
-
-
 class MacEventsWatcher:
     """
     Лёгкий фоновый наблюдатель (~0.5 мс на проверку, нулевой оверхед по памяти):
-    1. Следит за всплывающими уведомлениями macOS (Google Calendar, расписание, напоминания)
-       через нативный Accessibility API NotificationCenter и озвучивает их на Яндекс Станции.
-    2. Следит за папкой ~/Downloads и озвучивает на колонке завершение скачивания файлов.
+    Следит за всплывающими напоминаниями Google Calendar через нативный Accessibility API
+    NotificationCenter и озвучивает их на Яндекс Станции на комфортной громкости.
     """
 
     def __init__(self, tts_speak_fn: Callable[[str], tuple[bytes, int]]) -> None:
         self.tts_speak_fn = tts_speak_fn
-        self.downloads_dir = Path.home() / "Downloads"
         self._stop = threading.Event()
-        self._known_files: set[str] = set()
-        self._last_announce_ts = 0.0
         self._nc_pid: int | None = None
         self._nc_pid_ts = 0.0
         self._announced_notifications: dict[str, float] = {}
@@ -376,107 +365,89 @@ class MacEventsWatcher:
                 _cf.CFRelease(wins)
                 return
 
-            def extract_texts(el, lines: list[str], depth: int = 0) -> None:
+            alerts: list[list[str]] = []
+
+            def find_alerts(el, depth: int = 0) -> None:
                 if depth > 10:
                     return
-                title = _ax_str(el, "AXTitle")
-                desc = _ax_str(el, "AXDescription")
-                val = _ax_str(el, "AXValue")
-                for s in (title, desc, val):
-                    s = s.strip()
-                    if s and s not in lines:
-                        lines.append(s)
-                kids = _ax_copy(el, "AXChildren")
-                if kids:
-                    if _cf.CFGetTypeID(kids) == _CF_ARRAY_TYPE:
-                        k_count = _cf.CFArrayGetCount(kids)
-                        for k_idx in range(k_count):
-                            child = _cf.CFArrayGetValueAtIndex(kids, k_idx)
-                            extract_texts(child, lines, depth + 1)
-                    _cf.CFRelease(kids)
+                subrole = _ax_str(el, "AXSubrole")
+                role = _ax_str(el, "AXRole")
+                if (
+                    subrole in ("AXNotificationCenterAlert", "AXNotificationCenterBanner")
+                    or role in ("AXNotificationCenterAlert", "AXNotificationCenterBanner")
+                ):
+                    lines: list[str] = []
 
-            now = time.time()
+                    def get_texts(c, d: int = 0) -> None:
+                        if d > 5:
+                            return
+                        t = _ax_str(c, "AXTitle")
+                        v = _ax_str(c, "AXValue")
+                        ds = _ax_str(c, "AXDescription")
+                        for s in (t, v, ds):
+                            s = s.strip()
+                            if s and s not in lines:
+                                lines.append(s)
+                        ch = _ax_copy(c, "AXChildren")
+                        if ch:
+                            if _cf.CFGetTypeID(ch) == _CF_ARRAY_TYPE:
+                                n = _cf.CFArrayGetCount(ch)
+                                for k in range(n):
+                                    get_texts(_cf.CFArrayGetValueAtIndex(ch, k), d + 1)
+                            _cf.CFRelease(ch)
+
+                    get_texts(el)
+                    if lines:
+                        alerts.append(lines)
+                    return
+
+                ch = _ax_copy(el, "AXChildren")
+                if ch:
+                    if _cf.CFGetTypeID(ch) == _CF_ARRAY_TYPE:
+                        n = _cf.CFArrayGetCount(ch)
+                        for k in range(n):
+                            find_alerts(_cf.CFArrayGetValueAtIndex(ch, k), depth + 1)
+                    _cf.CFRelease(ch)
+
             for i in range(count):
                 win = _cf.CFArrayGetValueAtIndex(wins, i)
-                lines: list[str] = []
-                extract_texts(win, lines)
-                if not lines:
-                    continue
+                find_alerts(win)
 
+            _cf.CFRelease(wins)
+
+            now = time.time()
+            for lines in alerts:
                 speech = parse_calendar_notification(lines)
                 if not speech:
                     continue
 
-                # Дедупликация: не повторять одно и то же уведомление в течение 120 секунд
+                # Дедупликация: не повторять одно и то же уведомление в течение 300 секунд (5 минут)
                 key = speech.lower().strip()
                 last_time = self._announced_notifications.get(key, 0.0)
-                if now - last_time < 120.0:
+                if now - last_time < 300.0:
                     continue
 
                 self._announced_notifications[key] = now
-                log.info("Обнаружено уведомление календаря: %s -> озвучиваем: '%s'", lines, speech)
+                log.info("Обнаружено напоминание календаря: %s -> озвучиваем: '%s'", lines, speech)
                 announce_on_station_async(speech, self.tts_speak_fn, with_chime=True)
 
-            _cf.CFRelease(wins)
-
-            # Очистка устаревших ключей дедупликации (> 10 минут)
+            # Очистка устаревших ключей дедупликации (> 15 минут)
             if len(self._announced_notifications) > 50:
                 self._announced_notifications = {
-                    k: ts for k, ts in self._announced_notifications.items() if now - ts < 600.0
+                    k: ts for k, ts in self._announced_notifications.items() if now - ts < 900.0
                 }
         except Exception as exc:
             log.debug("Ошибка проверки NotificationCenter: %s", exc)
 
-    def _snapshot_downloads(self) -> set[str]:
-        if not self.downloads_dir.is_dir():
-            return set()
-        res: set[str] = set()
-        try:
-            for entry in self.downloads_dir.iterdir():
-                name = entry.name
-                if name.startswith(".") or name.lower().endswith(_TEMP_DOWNLOAD_SUFFIXES):
-                    continue
-                res.add(name)
-        except Exception:
-            pass
-        return res
-
-    def _check_downloads(self) -> None:
-        current = self._snapshot_downloads()
-        new_files = current - self._known_files
-        self._known_files = current
-        if new_files and (time.time() - self._last_announce_ts > 5.0):
-            time.sleep(1.0)
-            still_there = [f for f in new_files if (self.downloads_dir / f).exists()]
-            if still_there:
-                self._last_announce_ts = time.time()
-                if len(still_there) == 1:
-                    spoken_name = _humanize_filename_for_speech(still_there[0])
-                    msg = f"На компьютере завершилось скачивание файла {spoken_name}."
-                else:
-                    msg = f"На компьютере завершилось скачивание {len(still_there)} файлов."
-                announce_on_station_async(msg, self.tts_speak_fn, with_chime=True)
-
     def start(self) -> None:
-        self._known_files = self._snapshot_downloads()
         threading.Thread(target=self._loop, daemon=True).start()
 
     def stop(self) -> None:
         self._stop.set()
 
     def _loop(self) -> None:
-        downloads_interval = 4.0
-        last_downloads_check = 0.0
-        while not self._stop.wait(1.2):
-            now = time.time()
+        while not self._stop.wait(1.5):
             try:
                 self._poll_notification_center()
             except Exception as exc:
                 log.debug("Ошибка в _poll_notification_center: %s", exc)
-
-            if now - last_downloads_check >= downloads_interval:
-                last_downloads_check = now
-                try:
-                    self._check_downloads()
-                except Exception as exc:
-                    log.debug("Ошибка в _check_downloads: %s", exc)
